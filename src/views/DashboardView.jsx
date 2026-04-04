@@ -12,7 +12,7 @@ export default function DashboardView({ clients, navigateTo, onAddClient }) {
       {/* Header del Dashboard */}
       <div className="flex justify-between items-end">
         <div>
-          <h2 className="text-2xl md:text-3xl font-bold text-white uppercase tracking-wider">Dashboard</h2>
+          <h2 className="text-2xl md:text-3xl font-bold text-white uppercase tracking-wider">Panel</h2>
           <p className="text-zinc-500 mt-1 text-sm">Resumen de rendimiento diario.</p>
         </div>
         <button 
