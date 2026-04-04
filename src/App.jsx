@@ -174,7 +174,7 @@ export default function App() {
     await addDoc(collection(db, 'exercises'), { name: data.name, videoUrl: data.videoUrl || '' }); 
   };
 
-  // NUEVO: Función para actualizar ejercicio
+  // Función para actualizar ejercicio
   const handleUpdateExercise = async (updatedData) => {
     try {
       const exRef = doc(db, 'exercises', updatedData.id);
@@ -279,9 +279,17 @@ export default function App() {
         {/* Header Móvil */}
         <header className="md:hidden flex items-center justify-between p-4 bg-zinc-950 border-b border-zinc-800">
           <div className="flex items-center gap-2">
-             <div className="bg-yellow-400 p-1 rounded">
-               <Dumbbell className="w-4 h-4 text-black" /> 
-             </div>
+             
+             {/* AQUÍ CARGAMOS EL LOGO EN VERSIÓN MÓVIL */}
+             <img 
+               src="/logo.png" 
+               alt="Ragnar Training Logo" 
+               className="w-8 h-8 object-contain drop-shadow-[0_0_8px_rgba(250,204,21,0.3)]"
+               onError={(e) => {
+                 e.target.style.display = 'none';
+               }}
+             />
+
              {/* MARCA EN MÓVIL */}
              <span className="font-black tracking-tighter text-lg italic">
                <span className="text-yellow-400">RAGNAR</span>
@@ -324,7 +332,7 @@ export default function App() {
             />
           )}
 
-          {/* 4. VISTA EJERCICIOS (NUEVO PROPS AÑADIDO AQUI) */}
+          {/* 4. VISTA EJERCICIOS */}
           {activeView === 'exercises' && (
             <ExercisesView 
               exercises={exercises} 
