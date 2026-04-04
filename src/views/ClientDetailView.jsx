@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Calendar from 'react-calendar';
 import 'react-calendar/dist/Calendar.css';
 import { ChevronLeft, Plus, Trash2, Dumbbell, User, Calendar as CalendarIcon, Video, Copy, X, Save, Layout } from 'lucide-react';
-import { collection, onSnapshot, doc, setDoc, getDoc, updateDoc } from 'firebase/firestore';
+import { collection, onSnapshot, doc, setDoc, getDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 
 export default function ClientDetailView({ client, goBack, exercisesLibrary }) {
@@ -105,10 +105,16 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary }) {
   const handleRemoveExercise = async (index) => {
     const updatedSession = dailySession.filter((_, i) => i !== index);
     try {
-      await setDoc(doc(db, 'clients', client.id, 'sessions', currentDateId), {
-        date: currentDateId,
-        exercises: updatedSession
-      }, { merge: true });
+      if (updatedSession.length === 0) {
+        // SOLUCIÓN: Si ya no quedan ejercicios, eliminamos el documento para borrar el punto amarillo
+        await deleteDoc(doc(db, 'clients', client.id, 'sessions', currentDateId));
+      } else {
+        // Si aún quedan ejercicios, solo actualizamos la lista
+        await setDoc(doc(db, 'clients', client.id, 'sessions', currentDateId), {
+          date: currentDateId,
+          exercises: updatedSession
+        }, { merge: true });
+      }
     } catch (error) { console.error(error); }
   };
 
