@@ -44,7 +44,7 @@ export function Sidebar({ activeView, navigateTo, notificationCount = 0 }) {
       </div>
 
       <nav className="flex-1 p-4 space-y-2">
-        <SidebarItem icon={<BarChart3 />} label="Panel General" view="dashboard" />
+        <SidebarItem icon={<BarChart3 />} label="Panel General" view="Panel Principal" />
         <SidebarItem icon={<Bell />} label="Notificaciones" view="notifications" badge={notificationCount} />
         <SidebarItem icon={<Users />} label="Clientes" view="clients" />
         <SidebarItem icon={<List />} label="Ejercicios" view="exercises" />
