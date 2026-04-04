@@ -1,5 +1,5 @@
 import React from 'react';
-import { Dumbbell, BarChart3, Users, Calendar, Settings, LogOut, List, Layout, Bell } from 'lucide-react';
+import { BarChart3, Users, Calendar, Settings, LogOut, List, Layout, Bell } from 'lucide-react';
 
 export function Sidebar({ activeView, navigateTo, notificationCount = 0 }) {
   
@@ -25,9 +25,18 @@ export function Sidebar({ activeView, navigateTo, notificationCount = 0 }) {
   return (
     <aside className="hidden md:flex flex-col w-64 bg-zinc-950 border-r border-zinc-800 h-screen">
       <div className="p-6 flex items-center gap-3 border-b border-zinc-800">
-        <div className="bg-yellow-400 p-2 rounded-lg shadow-[0_0_15px_rgba(250,204,21,0.3)]">
-          <Dumbbell className="w-6 h-6 text-black" />
-        </div>
+        
+        {/* AQUÍ CARGAMOS EL LOGO DESDE LA CARPETA PUBLIC */}
+        <img 
+          src="/logo.png" 
+          alt="Ragnar Training Logo" 
+          className="w-10 h-10 object-contain drop-shadow-[0_0_10px_rgba(250,204,21,0.3)]"
+          onError={(e) => {
+            // Si no encuentra el logo.png, evita que se rompa y muestra un cuadro vacío
+            e.target.style.display = 'none';
+          }}
+        />
+
         <h1 className="text-lg font-black tracking-tighter italic">
           <span className="text-yellow-400">RAGNAR</span>
           <span className="text-white">-TRAINING</span>
@@ -39,7 +48,6 @@ export function Sidebar({ activeView, navigateTo, notificationCount = 0 }) {
         <SidebarItem icon={<Bell />} label="Notificaciones" view="notifications" badge={notificationCount} />
         <SidebarItem icon={<Users />} label="Clientes" view="clients" />
         <SidebarItem icon={<List />} label="Ejercicios" view="exercises" />
-        {/* AQUÍ ESTÁ EL BOTÓN DE RUTINAS */}
         <SidebarItem icon={<Layout />} label="Rutinas" view="routines" />
         <SidebarItem icon={<Calendar />} label="Agenda" view="calendar" />
         <SidebarItem icon={<Settings />} label="Configuración" view="settings" />
