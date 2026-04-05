@@ -3,67 +3,89 @@ import Calendar from 'react-calendar';
 import 'react-calendar/dist/Calendar.css';
 import { 
   Dumbbell, CheckCircle, User, PlayCircle, Menu, X, 
-  LogOut, MessageSquare, Send, AlertTriangle, Trophy
+  LogOut, MessageSquare, Send, AlertTriangle, Trophy, CreditCard, ExternalLink, ChevronRight, Video
 } from 'lucide-react';
-import { doc, getDoc, collection, onSnapshot, setDoc, addDoc, query, orderBy, limit, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, onSnapshot, setDoc, addDoc, query, orderBy, updateDoc, where } from 'firebase/firestore';
 import { getAuth, signOut } from 'firebase/auth';
 import { db } from '../firebase';
 
 export default function StudentView({ clientId }) {
   // --- ESTADOS DE DATOS ---
   const [client, setClient] = useState(null);
+  const [trainerSettings, setTrainerSettings] = useState({ alias: '', plans: [] });
   const [date, setDate] = useState(new Date());
   const [dailySession, setDailySession] = useState([]);
   const [isSessionFinalized, setIsSessionFinalized] = useState(false);
   const [allSessionsIds, setAllSessionsIds] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  // --- ESTADOS DE PAGO ---
+  const [hasPaidMonth, setHasPaidMonth] = useState(true); 
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+
   // --- ESTADOS DE NAVEGACIÓN ---
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [currentView, setCurrentView] = useState('workout'); // 'workout', 'profile', 'chat'
-
-  // --- ESTADOS DE CHAT ---
-  const [messages, setMessages] = useState([]);
-  const [newMessage, setNewMessage] = useState('');
-  const messagesEndRef = useRef(null);
-
-  // --- ESTADOS DE "MISSED WORKOUT" (Falta de ayer) ---
-  const [showMissedModal, setShowMissedModal] = useState(false);
-  const [missedReason, setMissedReason] = useState('');
-  const [missedDateId, setMissedDateId] = useState(null);
+  const [currentView, setCurrentView] = useState('workout'); // 'workout' | 'profile'
 
   const auth = getAuth();
-  const formatDateId = (d) => d.toISOString().split('T')[0];
+  
+  // Helpers de fecha
+  const formatDateId = (d) => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   const currentDateId = formatDateId(date);
+  const currentMonthId = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
 
   // --- CARGA DE DATOS INICIALES ---
   useEffect(() => {
-    const fetchClient = async () => {
+    const fetchData = async () => {
       try {
+        // 1. Datos del Cliente
         const docRef = doc(db, 'clients', clientId);
         const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) setClient({ id: docSnap.id, ...docSnap.data() });
-      } catch (e) { console.error(e); }
-      setLoading(false);
-    };
-    if (clientId) fetchClient();
-  }, [clientId]);
+        if (docSnap.exists()) {
+          setClient({ id: docSnap.id, ...docSnap.data() });
+        }
 
-  // Cargar Calendario (Puntos de días con rutina)
+        // 2. Alias del Coach (Configuración General)
+        const settingsRef = doc(db, 'settings', 'general');
+        const settingsSnap = await getDoc(settingsRef);
+        if (settingsSnap.exists()) {
+          setTrainerSettings(settingsSnap.data());
+        }
+
+        // 3. Verificar Pago (Colección pagos dentro del cliente)
+        const paymentRef = doc(db, 'clients', clientId, 'payments', currentMonthId);
+        const paymentSnap = await getDoc(paymentRef);
+        // Si el documento existe y el status es 'paid', está al día
+        setHasPaidMonth(paymentSnap.exists() && paymentSnap.data().status === 'paid');
+
+      } catch (e) {
+        console.error("Error cargando datos del alumno:", e);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (clientId) fetchData();
+  }, [clientId, currentMonthId]);
+
+  // --- ESCUCHAR RUTINA Y CALENDARIO EN TIEMPO REAL ---
   useEffect(() => {
     if (!client) return;
-    const sessionsRef = collection(db, 'clients', client.id, 'sessions');
-    const unsubscribe = onSnapshot(sessionsRef, (snapshot) => {
+
+    // Marcadores del calendario (días que hubo entrenamiento)
+    const unsubSessions = onSnapshot(collection(db, 'clients', client.id, 'sessions'), (snapshot) => {
       setAllSessionsIds(snapshot.docs.map(doc => doc.id));
     });
-    return () => unsubscribe();
-  }, [client]);
 
-  // Cargar Rutina del Día Seleccionado
-  useEffect(() => {
-    if (!client) return;
+    // Rutina del día seleccionado
     const sessionDocRef = doc(db, 'clients', client.id, 'sessions', currentDateId);
-    const unsubscribe = onSnapshot(sessionDocRef, (docSnap) => {
+    const unsubDaily = onSnapshot(sessionDocRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
         setDailySession(data.exercises || []);
@@ -73,162 +95,77 @@ export default function StudentView({ clientId }) {
         setIsSessionFinalized(false);
       }
     });
-    return () => unsubscribe();
-  }, [date, client]);
 
-  // Cargar Chat
-  useEffect(() => {
-    if (!client || currentView !== 'chat') return;
-    const q = query(collection(db, 'clients', client.id, 'messages'), orderBy('createdAt', 'asc'), limit(50));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setMessages(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-      setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
-    });
-    return () => unsubscribe();
-  }, [client, currentView]);
+    return () => { unsubSessions(); unsubDaily(); };
+  }, [date, client, currentDateId]);
 
-  // --- LÓGICA DE DETECCIÓN DE FALTA ---
-  useEffect(() => {
-    const checkYesterday = async () => {
-      if (!client) return;
-      const today = new Date();
-      const yesterday = new Date(today);
-      yesterday.setDate(today.getDate() - 1);
-      const yId = formatDateId(yesterday);
+  // --- ACCIONES ---
 
-      try {
-        const docRef = doc(db, 'clients', client.id, 'sessions', yId);
-        const docSnap = await getDoc(docRef);
+  const handleDateChange = (newDate) => {
+    if (!hasPaidMonth) {
+      setShowPaymentModal(true);
+    } else {
+      setDate(newDate);
+    }
+  };
 
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          const exercises = data.exercises || [];
-
-          if (exercises.length > 0) {
-            const didSomething = exercises.some(ex => ex.actualSets && ex.actualSets.some(s => s.completed));
-            const alreadyExcused = data.missedReason && data.missedReason.length > 0;
-            const alreadyFinalized = data.isFinalized;
-
-            if (!didSomething && !alreadyExcused && !alreadyFinalized) {
-              setMissedDateId(yId);
-              setShowMissedModal(true);
-            }
-          }
-        }
-      } catch (error) { console.error("Error verificando ayer:", error); }
-    };
-    checkYesterday();
-  }, [client]);
-
-  // --- FUNCIONES ---
+  const handleGoToPay = () => {
+    // Redirección simple a Mercado Pago
+    window.open(`https://www.mercadopago.com.ar/`, '_blank');
+  };
 
   const handleUpdateSet = async (exerciseIndex, setIndex, field, value) => {
-    if (isSessionFinalized) return; // Si ya terminó, no puede editar
+    if (isSessionFinalized || !hasPaidMonth) return;
+    
     const updatedSession = [...dailySession];
+    const exercise = updatedSession[exerciseIndex];
     
-    if (!updatedSession[exerciseIndex].actualSets) updatedSession[exerciseIndex].actualSets = [];
-    if (!updatedSession[exerciseIndex].actualSets[setIndex]) updatedSession[exerciseIndex].actualSets[setIndex] = { reps: '', weight: '', completed: false };
+    if (!exercise.actualSets) exercise.actualSets = [];
+    if (!exercise.actualSets[setIndex]) {
+      exercise.actualSets[setIndex] = { reps: '', weight: '', completed: false };
+    }
     
-    updatedSession[exerciseIndex].actualSets[setIndex][field] = value;
+    exercise.actualSets[setIndex][field] = value;
 
     try {
       await setDoc(doc(db, 'clients', clientId, 'sessions', currentDateId), {
         date: currentDateId,
         exercises: updatedSession
       }, { merge: true });
-    } catch (error) { console.error(error); }
+    } catch (error) {
+      console.error("Error actualizando serie:", error);
+    }
   };
 
   const toggleSetComplete = (exerciseIndex, setIndex) => {
-    if (isSessionFinalized) return;
+    if (isSessionFinalized || !hasPaidMonth) return;
     const currentStatus = dailySession[exerciseIndex].actualSets?.[setIndex]?.completed || false;
     handleUpdateSet(exerciseIndex, setIndex, 'completed', !currentStatus);
   };
 
-  // NUEVO: FINALIZAR Y EVALUAR ENTRENAMIENTO
   const handleFinishWorkout = async () => {
-    if (!window.confirm('¿Finalizar entrenamiento? Tu coach recibirá los resultados y ya no podrás editar los pesos de hoy.')) return;
-
-    let fellShort = false;
-    let wentAbove = false;
-    let completedSetsCount = 0;
-    let prescribedSetsCount = 0;
-
-    // Analizamos el rendimiento del alumno vs lo que le pediste
-    dailySession.forEach(ex => {
-      const pSets = parseInt(ex.sets) || 0;
-      const pReps = parseInt(ex.reps) || 0; 
-      prescribedSetsCount += pSets;
-
-      const setsData = ex.actualSets || [];
-      const cSets = setsData.filter(s => s && s.completed).length;
-      completedSetsCount += cSets;
-
-      if (cSets < pSets) fellShort = true;
-      if (cSets > pSets) wentAbove = true;
-
-      setsData.forEach(set => {
-        if (set && set.completed) {
-          const cReps = parseInt(set.reps) || 0;
-          if (cReps < pReps && pReps > 0) fellShort = true;
-          if (cReps > pReps && pReps > 0) wentAbove = true;
-        }
-      });
-    });
-
-    // Definimos el veredicto
-    let performanceText = "Cumplió exactamente con las series y repeticiones.";
-    if (completedSetsCount === 0) {
-      performanceText = "Marcó finalizado pero no registró ninguna serie completada.";
-    } else if (fellShort && wentAbove) {
-      performanceText = "Resultados mixtos (algunos por debajo, otros por encima de la meta).";
-    } else if (fellShort) {
-      performanceText = "Rindió por debajo de las series/reps asignadas.";
-    } else if (wentAbove) {
-      performanceText = "¡Superó el volumen! (Hizo más series o reps de las asignadas).";
-    }
-
+    if (!window.confirm('¿Confirmas que has terminado el entrenamiento de hoy?')) return;
     try {
-      // 1. Bloqueamos la edición del día
       await updateDoc(doc(db, 'clients', clientId, 'sessions', currentDateId), {
         isFinalized: true,
-        performanceSummary: performanceText,
         completedAt: new Date()
       });
 
-      // 2. Enviamos la notificación al coach
+      // Notificar al Entrenador
       await addDoc(collection(db, 'trainerNotifications'), {
         type: 'workout_completed',
-        clientId: clientId,
+        clientId,
         clientName: client.name,
         date: currentDateId,
-        performance: performanceText,
         read: false,
-        createdAt: new Date()
+        createdAt: new Date(),
+        performance: "Entrenamiento completado por el alumno"
       });
 
       setIsSessionFinalized(true);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (error) {
       console.error(error);
     }
-  };
-
-  const handleSendReason = async () => {
-    if (!missedReason.trim()) return;
-    try {
-      await updateDoc(doc(db, 'clients', clientId, 'sessions', missedDateId), { missedReason: missedReason, missedReasonDate: new Date() });
-      await addDoc(collection(db, 'clients', clientId, 'messages'), { text: `⚠️ NO ENTRENÉ EL ${missedDateId}: "${missedReason}"`, sender: 'system', createdAt: new Date() });
-      await addDoc(collection(db, 'trainerNotifications'), { type: 'missed_workout', clientId: clientId, clientName: client.name, date: missedDateId, reason: missedReason, read: false, createdAt: new Date() });
-      setShowMissedModal(false);
-    } catch (error) {}
-  };
-
-  const sendMessage = async (e) => {
-    e.preventDefault();
-    if (!newMessage.trim()) return;
-    await addDoc(collection(db, 'clients', client.id, 'messages'), { text: newMessage, sender: 'student', createdAt: new Date() });
-    setNewMessage('');
   };
 
   const handleLogout = async () => {
@@ -236,143 +173,282 @@ export default function StudentView({ clientId }) {
     window.location.reload();
   };
 
-  if (loading) return <div className="min-h-screen bg-black flex items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-t-2 border-yellow-400"></div></div>;
-  if (!client) return <div className="min-h-screen bg-black text-white flex justify-center items-center">Atleta no encontrado</div>;
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-yellow-400"></div>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-white font-sans flex flex-col relative overflow-hidden">
+    <div className="min-h-screen bg-zinc-950 text-white font-sans flex flex-col relative overflow-x-hidden">
       
-      {/* MODAL DE FALTA */}
-      {showMissedModal && (
-        <div className="absolute inset-0 z-[60] bg-black/90 backdrop-blur-md flex items-center justify-center p-6 animate-in fade-in">
-          <div className="bg-zinc-900 border border-yellow-400 rounded-2xl p-6 w-full max-w-sm text-center">
-            <div className="mx-auto bg-yellow-400/20 p-4 rounded-full w-20 h-20 flex items-center justify-center mb-4"><AlertTriangle className="w-10 h-10 text-yellow-400" /></div>
-            <h2 className="text-2xl font-black text-white uppercase italic tracking-tighter mb-2">¡Faltaste Ayer!</h2>
-            <p className="text-zinc-400 text-sm mb-4">Tenías rutina programada y no registraste actividad.</p>
-            <textarea className="w-full bg-black border border-zinc-700 rounded-xl p-3 text-white text-sm focus:border-yellow-400 outline-none resize-none" rows={3} maxLength={100} placeholder="¿Qué pasó?" value={missedReason} onChange={(e) => setMissedReason(e.target.value)} />
-            <button onClick={handleSendReason} disabled={!missedReason.trim()} className="w-full mt-4 bg-yellow-400 text-black font-bold py-3 rounded-xl uppercase disabled:opacity-50">Enviar al Coach</button>
-          </div>
-        </div>
-      )}
-
-      {/* MENÚ HAMBURGUESA */}
-      {isMenuOpen && (
-        <div className="absolute inset-0 z-50 bg-zinc-950/95 backdrop-blur-sm flex flex-col p-6">
-          <div className="flex justify-end"><button onClick={() => setIsMenuOpen(false)} className="p-2 bg-zinc-900 rounded-full"><X/></button></div>
-          <div className="flex-1 flex flex-col items-center justify-center gap-6">
-            <div className="w-20 h-20 bg-yellow-400 rounded-full flex items-center justify-center text-black text-3xl font-bold">{client.name.charAt(0)}</div>
-            <h2 className="text-2xl font-bold uppercase">{client.name}</h2>
-            <nav className="w-full max-w-xs space-y-3">
-              <button onClick={() => { setCurrentView('workout'); setIsMenuOpen(false); }} className={`w-full p-4 rounded-xl flex items-center gap-4 font-bold ${currentView === 'workout' ? 'bg-yellow-400 text-black' : 'bg-zinc-900 text-zinc-400'}`}><Dumbbell /> Mi Entrenamiento</button>
-              <button onClick={() => { setCurrentView('profile'); setIsMenuOpen(false); }} className={`w-full p-4 rounded-xl flex items-center gap-4 font-bold ${currentView === 'profile' ? 'bg-yellow-400 text-black' : 'bg-zinc-900 text-zinc-400'}`}><User /> Mi Perfil</button>
-              <button onClick={() => { setCurrentView('chat'); setIsMenuOpen(false); }} className={`w-full p-4 rounded-xl flex items-center gap-4 font-bold ${currentView === 'chat' ? 'bg-yellow-400 text-black' : 'bg-zinc-900 text-zinc-400'}`}><MessageSquare /> Chat con Coach</button>
-            </nav>
-            <button onClick={handleLogout} className="mt-12 text-red-500 font-bold flex items-center gap-2"><LogOut/> Cerrar Sesión</button>
-          </div>
-        </div>
-      )}
-
-      {/* HEADER SUPERIOR */}
-      <div className="bg-yellow-400 text-black p-4 pb-6 rounded-b-[2rem] shadow-lg z-10 relative">
-         <div className="flex justify-between items-center">
-            <div className="flex items-center gap-3">
-               <div className="bg-black/10 p-2 rounded-full"><User size={20}/></div>
-               <div><h1 className="text-xl font-black uppercase leading-none">{client.name}</h1><p className="text-xs font-bold opacity-70 uppercase tracking-wide">Alumno</p></div>
+      {/* MODAL DE BLOQUEO POR DEUDA */}
+      {showPaymentModal && (
+        <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-md flex items-center justify-center p-6 animate-in fade-in zoom-in duration-300">
+          <div className="bg-zinc-900 border border-red-500/30 rounded-3xl p-8 w-full max-w-sm text-center shadow-2xl">
+            <div className="mx-auto bg-red-500/10 p-5 rounded-full w-20 h-20 flex items-center justify-center mb-6">
+              <AlertTriangle className="w-10 h-10 text-red-500" />
             </div>
-            <button onClick={() => setIsMenuOpen(true)} className="p-2"><Menu size={28}/></button>
+            <h2 className="text-3xl font-black text-white uppercase italic tracking-tighter mb-2">Deuda del Mes</h2>
+            <p className="text-zinc-400 text-sm mb-8 leading-relaxed">
+              Tu acceso está limitado. Para ver rutinas y navegar el calendario, regulariza el pago de 
+              <span className="text-white font-bold"> {date.toLocaleString('es-ES', { month: 'long' })}</span>.
+            </p>
+            
+            <div className="bg-black/50 rounded-2xl p-5 mb-8 border border-zinc-800 text-left">
+              <p className="text-[10px] text-zinc-500 uppercase font-black mb-1 tracking-widest">Alias Mercado Pago:</p>
+              <p className="text-lg font-mono font-bold text-yellow-400 break-all select-all">
+                {trainerSettings.alias || 'COACH_SIN_ALIAS'}
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              <button 
+                onClick={handleGoToPay} 
+                className="w-full bg-yellow-400 text-black font-black py-4 rounded-xl uppercase tracking-widest flex items-center justify-center gap-2 active:scale-95 transition-transform"
+              >
+                Ir a Pagar <ExternalLink size={18}/>
+              </button>
+              <button 
+                onClick={() => setShowPaymentModal(false)} 
+                className="w-full text-zinc-500 font-bold text-xs uppercase tracking-widest py-2"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MENÚ LATERAL (MÓVIL) */}
+      {isMenuOpen && (
+        <div className="fixed inset-0 z-50 bg-black/95 flex flex-col p-6 animate-in slide-in-from-right">
+          <div className="flex justify-end mb-10">
+            <button onClick={() => setIsMenuOpen(false)} className="p-2 bg-zinc-900 rounded-full"><X size={32}/></button>
+          </div>
+          <div className="flex flex-col gap-6 text-2xl font-black uppercase italic">
+            <button onClick={() => { setCurrentView('workout'); setIsMenuOpen(false); }} className={`text-left ${currentView === 'workout' ? 'text-yellow-400' : 'text-zinc-600'}`}>Mi Entrenamiento</button>
+            <button onClick={() => { setCurrentView('profile'); setIsMenuOpen(false); }} className={`text-left ${currentView === 'profile' ? 'text-yellow-400' : 'text-zinc-600'}`}>Mi Perfil & Pago</button>
+            <div className="h-px bg-zinc-800 my-4"></div>
+            <button onClick={handleLogout} className="text-left text-red-500 flex items-center gap-3"><LogOut/> Salir</button>
+          </div>
+        </div>
+      )}
+
+      {/* HEADER PRINCIPAL */}
+      <div className="bg-yellow-400 text-black p-4 pb-10 rounded-b-[3rem] shadow-xl relative z-10">
+         <div className="flex justify-between items-center max-w-2xl mx-auto">
+            <div className="flex items-center gap-4">
+               <div className="w-12 h-12 bg-black rounded-2xl flex items-center justify-center text-yellow-400 shadow-lg">
+                  <User size={24}/>
+               </div>
+               <div>
+                  <h1 className="text-xl font-black uppercase leading-none tracking-tighter">{client?.name}</h1>
+                  <p className="text-[10px] font-black opacity-60 uppercase tracking-widest mt-1">Atleta Ragnar</p>
+               </div>
+            </div>
+            <button onClick={() => setIsMenuOpen(true)} className="p-2 bg-black/5 rounded-lg"><Menu size={28}/></button>
          </div>
       </div>
 
-      {/* CONTENIDO */}
-      <div className="flex-1 overflow-y-auto px-4 -mt-4 pt-8 pb-10 space-y-6 relative z-0">
+      {/* CONTENIDO DINÁMICO */}
+      <main className="flex-1 max-w-2xl mx-auto w-full px-4 -mt-6 pb-24 relative z-20">
         
         {currentView === 'workout' && (
-          <>
-            <div className="flex justify-between items-end mb-1 px-1">
-                <h2 className="text-xl font-bold uppercase">{isSessionFinalized ? 'Terminado' : 'Hoy'}</h2>
-                <span className="text-xs text-yellow-400 font-bold uppercase">{date.toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric' })}</span>
-            </div>
-
-            {isSessionFinalized && (
-              <div className="bg-green-500/10 border border-green-500/30 rounded-xl p-4 flex items-center gap-3 text-green-400">
-                <Trophy size={24} className="shrink-0"/>
-                <div>
-                  <p className="font-bold text-sm uppercase">Entrenamiento Finalizado</p>
-                  <p className="text-xs opacity-80">El coach ya recibió tus resultados de este día.</p>
+          <div className="space-y-6">
+            
+            {/* Aviso de Pago Pendiente */}
+            {!hasPaidMonth && (
+              <div 
+                onClick={() => setShowPaymentModal(true)}
+                className="bg-red-600 text-white p-4 rounded-2xl flex items-center justify-between shadow-lg shadow-red-600/20 animate-pulse cursor-pointer"
+              >
+                <div className="flex items-center gap-3">
+                  <AlertTriangle size={20}/>
+                  <span className="font-black uppercase text-xs">Pago pendiente: {date.toLocaleString('es-ES', { month: 'long' })}</span>
                 </div>
+                <ChevronRight size={20}/>
               </div>
             )}
 
-            <div className="space-y-4">
-                {dailySession.length > 0 ? dailySession.map((ex, idx) => {
-                  const planSets = parseInt(ex.sets) || 1;
-                  const setsData = ex.actualSets || [];
-                  const isExerciseComplete = setsData.filter(s => s && s.completed).length >= planSets;
+            {/* Fecha Actual */}
+            <div className="flex justify-between items-center px-2">
+                <h2 className="text-2xl font-black uppercase italic tracking-tighter">
+                  {isSessionFinalized ? 'Resumen' : 'Entrenamiento'}
+                </h2>
+                <div className="bg-zinc-900 px-3 py-1 rounded-full border border-zinc-800">
+                  <span className="text-[10px] text-yellow-400 font-black uppercase">
+                    {date.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric' })}
+                  </span>
+                </div>
+            </div>
 
-                  return (
-                    <div key={idx} className={`bg-zinc-900 border ${isExerciseComplete ? 'border-green-500/50' : 'border-zinc-800'} rounded-xl overflow-hidden`}>
-                      <div className="p-4 bg-zinc-800/30 flex justify-between items-start">
-                         <div className="flex items-center gap-3">
-                            <span className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${isExerciseComplete ? 'bg-green-500 text-white' : 'bg-yellow-400 text-black'}`}>
-                              {isExerciseComplete ? <CheckCircle size={16}/> : idx + 1}
-                            </span>
-                            <div>
-                               <h3 className="font-bold text-lg leading-tight">{ex.name}</h3>
-                               <p className="text-zinc-500 text-xs mt-1">Meta: <span className="text-zinc-300">{ex.sets}x{ex.reps}</span> @ {ex.weight}</p>
-                            </div>
-                         </div>
+            {/* Lista de Ejercicios */}
+            <div className={`space-y-4 ${!hasPaidMonth ? 'opacity-20 pointer-events-none' : ''}`}>
+                {dailySession.length > 0 ? (
+                  dailySession.map((ex, exIdx) => (
+                    <div key={exIdx} className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 shadow-sm">
+                      <div className="flex justify-between items-start mb-5">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-xl bg-yellow-400/10 text-yellow-400 flex items-center justify-center font-black">{exIdx + 1}</div>
+                          <h3 className="font-bold text-lg uppercase tracking-tight">{ex.name}</h3>
+                        </div>
+                        {ex.videoUrl && (
+                          <a href={ex.videoUrl} target="_blank" rel="noreferrer" className="p-2 bg-blue-500/10 text-blue-400 rounded-xl">
+                            <Video size={20}/>
+                          </a>
+                        )}
                       </div>
 
-                      <div className="p-3 space-y-2">
-                        {Array.from({ length: planSets }).map((_, setIdx) => {
-                          const currentSet = setsData[setIdx] || { reps: '', weight: '', completed: false };
+                      <div className="grid grid-cols-4 gap-2 mb-2 px-2">
+                        <span className="text-[9px] uppercase font-black text-zinc-500">Serie</span>
+                        <span className="text-[9px] uppercase font-black text-zinc-500 text-center">Objetivo</span>
+                        <span className="text-[9px] uppercase font-black text-zinc-500 text-center">Reps</span>
+                        <span className="text-[9px] uppercase font-black text-zinc-500 text-center">Peso</span>
+                      </div>
+
+                      <div className="space-y-2">
+                        {[...Array(parseInt(ex.sets || 0))].map((_, sIdx) => {
+                          const isDone = dailySession[exIdx].actualSets?.[sIdx]?.completed;
                           return (
-                            <div key={setIdx} className={`grid grid-cols-10 gap-2 items-center p-2 rounded-lg ${currentSet.completed ? 'bg-green-500/10 border border-green-500/20' : 'bg-black/20 border border-zinc-800'}`}>
-                               <div className="col-span-1 text-center text-zinc-400 font-bold text-xs">{setIdx + 1}</div>
-                               <div className="col-span-3"><input type="number" disabled={isSessionFinalized} className="w-full bg-zinc-950 border border-zinc-700 disabled:opacity-50 rounded p-1.5 text-center text-sm outline-none focus:border-yellow-400" placeholder={ex.reps} value={currentSet.reps} onChange={(e) => handleUpdateSet(idx, setIdx, 'reps', e.target.value)} /></div>
-                               <div className="col-span-3"><input type="text" disabled={isSessionFinalized} className="w-full bg-zinc-950 border border-zinc-700 disabled:opacity-50 rounded p-1.5 text-center text-sm outline-none focus:border-yellow-400" placeholder={ex.weight} value={currentSet.weight} onChange={(e) => handleUpdateSet(idx, setIdx, 'weight', e.target.value)} /></div>
-                               <div className="col-span-3 flex justify-center">
-                                 <button disabled={isSessionFinalized} onClick={() => toggleSetComplete(idx, setIdx)} className={`w-full py-1.5 rounded flex items-center justify-center text-[10px] font-bold disabled:opacity-80 ${currentSet.completed ? 'bg-green-500 text-white' : 'bg-zinc-800 text-zinc-500 hover:bg-zinc-700'}`}>
-                                   {currentSet.completed ? 'LISTO' : 'HECHO'}
-                                 </button>
-                               </div>
+                            <div key={sIdx} className={`grid grid-cols-4 gap-2 items-center p-2 rounded-2xl transition-colors ${isDone ? 'bg-green-500/10 border border-green-500/20' : 'bg-black/30 border border-zinc-800/50'}`}>
+                              <span className="font-bold text-sm ml-2"># {sIdx + 1}</span>
+                              <span className="text-center text-xs text-zinc-400">{ex.reps}</span>
+                              <input 
+                                type="number" 
+                                placeholder="0"
+                                disabled={isSessionFinalized}
+                                className="bg-zinc-800 border-none rounded-lg py-1 text-center text-sm font-bold focus:ring-1 focus:ring-yellow-400"
+                                value={dailySession[exIdx].actualSets?.[sIdx]?.reps || ''}
+                                onChange={(e) => handleUpdateSet(exIdx, sIdx, 'reps', e.target.value)}
+                              />
+                              <input 
+                                type="number" 
+                                placeholder="kg"
+                                disabled={isSessionFinalized}
+                                className="bg-zinc-800 border-none rounded-lg py-1 text-center text-sm font-bold focus:ring-1 focus:ring-yellow-400"
+                                value={dailySession[exIdx].actualSets?.[sIdx]?.weight || ''}
+                                onChange={(e) => handleUpdateSet(exIdx, sIdx, 'weight', e.target.value)}
+                              />
+                              <button 
+                                onClick={() => toggleSetComplete(exIdx, sIdx)}
+                                className={`col-span-4 mt-1 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 ${isDone ? 'bg-green-500 text-black' : 'bg-zinc-800 text-zinc-500'}`}
+                              >
+                                {isDone ? <><CheckCircle size={12}/> Completada</> : 'Marcar Completada'}
+                              </button>
                             </div>
                           );
                         })}
                       </div>
                     </div>
-                  );
-                }) : (
-                  <div className="text-center py-12 bg-zinc-900/30 rounded-xl border border-dashed border-zinc-800"><Dumbbell className="w-8 h-8 text-zinc-700 mx-auto mb-2"/><p className="text-zinc-500 text-sm">Sin rutina asignada para hoy.</p></div>
+                  ))
+                ) : (
+                  <div className="text-center py-20 bg-zinc-900/30 rounded-[2rem] border border-dashed border-zinc-800">
+                    <Dumbbell className="w-12 h-12 text-zinc-800 mx-auto mb-4 opacity-20"/>
+                    <p className="text-zinc-500 font-bold uppercase tracking-widest text-sm">Descanso o sin rutina</p>
+                  </div>
                 )}
             </div>
 
-            {/* BOTÓN FINALIZAR ENTRENAMIENTO */}
-            {dailySession.length > 0 && !isSessionFinalized && (
+            {/* BOTÓN FINALIZAR */}
+            {dailySession.length > 0 && !isSessionFinalized && hasPaidMonth && (
               <button 
                 onClick={handleFinishWorkout}
-                className="w-full mt-6 bg-green-500 hover:bg-green-400 text-black font-black uppercase tracking-widest py-4 rounded-xl shadow-[0_0_20px_rgba(34,197,94,0.3)] transition-all flex justify-center items-center gap-2"
+                className="w-full bg-green-500 text-black font-black py-5 rounded-[2rem] uppercase tracking-widest shadow-xl shadow-green-500/10 active:scale-95 transition-transform"
               >
-                <CheckCircle size={20}/> Finalizar Entrenamiento
+                Finalizar Entrenamiento
               </button>
             )}
 
-            <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-4 mt-6">
-               <p className="text-[10px] uppercase text-zinc-500 font-bold mb-2 text-center">Navegar Agenda</p>
-               <Calendar onChange={setDate} value={date} className="react-calendar-custom-mini" tileClassName={({ date }) => allSessionsIds.includes(formatDateId(date)) ? 'has-workout' : null} />
+            {/* CALENDARIO */}
+            <div className="bg-zinc-900 rounded-[2rem] border border-zinc-800 p-6">
+               <div className="flex items-center gap-2 mb-4">
+                  <Calendar size={18} className="text-yellow-400"/>
+                  <h3 className="text-sm font-black uppercase tracking-widest">Historial</h3>
+               </div>
+               <Calendar 
+                  onChange={handleDateChange} 
+                  value={date} 
+                  className="react-calendar-custom-mini" 
+                  tileClassName={({ date }) => allSessionsIds.includes(formatDateId(date)) ? 'has-workout' : null} 
+               />
             </div>
-          </>
+          </div>
         )}
 
-        {/* ... Vistas Profile y Chat ... */}
         {currentView === 'profile' && (
-          <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-6 space-y-6"><div className="text-center border-b border-zinc-800 pb-6"><div className="w-24 h-24 bg-zinc-800 rounded-full mx-auto mb-4 flex items-center justify-center border-2 border-zinc-700"><User size={40}/></div><h2 className="text-xl font-bold">{client.name}</h2><p className="text-yellow-400 text-sm">{client.email || 'Sin email'}</p></div></div>
-        )}
+          <div className="space-y-6 animate-in fade-in">
+             <div className="bg-zinc-900 rounded-[2rem] p-8 border border-zinc-800 text-center">
+                <div className="w-24 h-24 bg-yellow-400 rounded-3xl mx-auto mb-4 flex items-center justify-center text-black shadow-2xl rotate-3">
+                   <User size={48}/>
+                </div>
+                <h2 className="text-2xl font-black uppercase">{client.name}</h2>
+                <p className="text-zinc-500 text-xs font-bold uppercase tracking-widest">{client.email}</p>
+             </div>
 
-        {currentView === 'chat' && (
-          <div className="flex flex-col h-[70vh] bg-zinc-900 rounded-xl border border-zinc-800 overflow-hidden"><div className="flex-1 overflow-y-auto p-4 space-y-3 bg-black/20">{messages.map(msg => (<div key={msg.id} className={`flex ${msg.sender === 'student' ? 'justify-end' : 'justify-start'}`}><div className={`max-w-[85%] p-3 rounded-2xl text-sm ${msg.sender === 'student' ? 'bg-yellow-400 text-black' : 'bg-zinc-800 text-white'}`}>{msg.text}</div></div>))}<div ref={messagesEndRef} /></div><form onSubmit={sendMessage} className="p-3 bg-zinc-950 border-t border-zinc-800 flex gap-2"><input type="text" placeholder="Escribe..." className="flex-1 bg-zinc-900 border border-zinc-700 rounded-full px-4 py-3 text-sm text-white focus:border-yellow-400 outline-none" value={newMessage} onChange={e => setNewMessage(e.target.value)}/><button type="submit" className="bg-yellow-400 text-black p-3 rounded-full"><Send size={18}/></button></form></div>
+             <div className="bg-zinc-900 rounded-[2rem] p-6 border border-zinc-800">
+               <h3 className="text-white font-bold uppercase mb-6 flex items-center gap-2 tracking-tighter">
+                  <CreditCard size={20} className="text-yellow-400"/> Mi Suscripción
+               </h3>
+               
+               <div className="space-y-4">
+                  <div className="flex justify-between items-center bg-black/40 p-5 rounded-2xl border border-zinc-800">
+                    <div>
+                      <p className="text-[10px] text-zinc-500 uppercase font-black">Mes Actual</p>
+                      <p className="font-bold text-lg uppercase">{date.toLocaleString('es-ES', { month: 'long' })}</p>
+                    </div>
+                    <span className={`text-[10px] font-black px-4 py-2 rounded-full uppercase tracking-widest ${hasPaidMonth ? 'bg-green-500/20 text-green-500 border border-green-500/30' : 'bg-red-500/20 text-red-500 border border-red-500/30'}`}>
+                      {hasPaidMonth ? 'Al Día' : 'Pendiente'}
+                    </span>
+                  </div>
+
+                  {!hasPaidMonth && (
+                    <div className="bg-yellow-400/5 border border-yellow-400/20 p-5 rounded-2xl">
+                       <p className="text-xs text-yellow-400/80 font-medium leading-relaxed">
+                          Para informar tu pago, realiza la transferencia al alias indicado abajo y envía el comprobante a tu entrenador.
+                       </p>
+                    </div>
+                  )}
+
+                  <div className="bg-black/40 p-5 rounded-2xl border border-zinc-800">
+                     <p className="text-[10px] text-zinc-500 uppercase font-black mb-1">Datos de Transferencia:</p>
+                     <p className="font-mono font-bold text-yellow-400 text-lg select-all cursor-pointer">{trainerSettings.alias || 'SIN_ALIAS'}</p>
+                  </div>
+
+                  <button 
+                    onClick={handleGoToPay}
+                    className="w-full bg-yellow-400 text-black font-black py-5 rounded-2xl uppercase tracking-widest shadow-lg active:scale-95 transition-all flex justify-center items-center gap-2"
+                  >
+                    Ir a Mercado Pago <ExternalLink size={20}/>
+                  </button>
+               </div>
+             </div>
+
+             <button onClick={handleLogout} className="w-full py-4 text-zinc-600 font-bold uppercase text-xs tracking-[0.3em]">Cerrar Sesión</button>
+          </div>
         )}
-      </div>
+      </main>
+
+      {/* NAV BAR INFERIOR (ESTILO APP) */}
+      <nav className="fixed bottom-0 left-0 right-0 bg-zinc-950/80 backdrop-blur-xl border-t border-zinc-800 p-4 pb-8 flex justify-around items-center z-[40]">
+        <button 
+          onClick={() => setCurrentView('workout')} 
+          className={`flex flex-col items-center gap-1 ${currentView === 'workout' ? 'text-yellow-400' : 'text-zinc-600'}`}
+        >
+          <Dumbbell size={24}/>
+          <span className="text-[9px] font-black uppercase tracking-widest">Rutina</span>
+        </button>
+        <button 
+          onClick={() => setCurrentView('profile')} 
+          className={`flex flex-col items-center gap-1 ${currentView === 'profile' ? 'text-yellow-400' : 'text-zinc-600'}`}
+        >
+          <User size={24}/>
+          <span className="text-[9px] font-black uppercase tracking-widest">Perfil</span>
+        </button>
+      </nav>
+
     </div>
   );
 }
