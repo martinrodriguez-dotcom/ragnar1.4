@@ -3,9 +3,9 @@ import Calendar from 'react-calendar';
 import 'react-calendar/dist/Calendar.css';
 import { 
   ChevronLeft, Plus, Trash2, Dumbbell, User, Calendar as CalendarIcon, 
-  Video, Copy, X, Save, Layout, MessageSquare, Send 
+  Video, Copy, X, Save, MessageSquare, Send 
 } from 'lucide-react';
-import { collection, onSnapshot, doc, setDoc, getDoc, updateDoc, deleteDoc, addDoc, query, orderBy } from 'firebase/firestore';
+import { collection, onSnapshot, doc, setDoc, updateDoc, deleteDoc, addDoc, query, orderBy } from 'firebase/firestore';
 import { db } from '../firebase';
 
 export default function ClientDetailView({ client, goBack, exercisesLibrary }) {
@@ -21,14 +21,12 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary }) {
   
   const [isAddingEx, setIsAddingEx] = useState(false);
   const [addMode, setAddMode] = useState('single');
-  // NUEVO: Agregamos el RIR por defecto en 2
   const [newExData, setNewExData] = useState({ name: '', sets: 4, reps: '10', weight: '', rir: '2', videoUrl: '' });
   const [selectedRoutineId, setSelectedRoutineId] = useState('');
 
   const [isCloneModalOpen, setIsCloneModalOpen] = useState(false);
   const [cloneDates, setCloneDates] = useState([]);
 
-  // Array de colores para la barra RIR (Piel a Rojo)
   const rirColors = ['bg-[#ffe4c4]', 'bg-[#fcd34d]', 'bg-[#fbbf24]', 'bg-[#f97316]', 'bg-[#ef4444]', 'bg-[#b91c1c]'];
 
   const formatDateId = (d) => {
@@ -234,7 +232,7 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary }) {
                         <button onClick={() => handleRemoveExercise(idx)} className="text-zinc-600 hover:text-red-500 p-2 transition-colors"><Trash2 size={20}/></button>
                       </div>
 
-                      {/* NUEVO: BARRA ESCALA RIR */}
+                      {/* BARRA ESCALA RIR */}
                       {ex.rir && (
                         <div className="mt-2 bg-zinc-900/50 p-3 rounded-xl border border-zinc-800/50">
                           <div className="flex justify-between items-center mb-1.5">
@@ -298,27 +296,30 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary }) {
       {isAddingEx && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 animate-in fade-in">
           <div className="bg-zinc-950 w-full max-w-md rounded-3xl border border-zinc-800 shadow-2xl relative overflow-hidden">
-            <div className="flex justify-between items-center p-6 border-b border-zinc-800 bg-zinc-900/50"><h2 className="text-xl font-black text-white uppercase italic tracking-tighter">Asignar Entrenamiento</h2><button onClick={() => setIsAddingEx(false)} className="text-zinc-500 hover:text-white bg-zinc-800 p-2 rounded-full"><X size={20} /></button></div>
+            <div className="flex justify-between items-center p-6 border-b border-zinc-800 bg-zinc-900/50">
+              <h2 className="text-xl font-black text-white uppercase italic tracking-tighter">Asignar Entrenamiento</h2>
+              <button onClick={() => setIsAddingEx(false)} className="text-zinc-500 hover:text-white bg-zinc-800 p-2 rounded-full"><X size={20} /></button>
+            </div>
+
             <div className="p-6">
               <div className="flex gap-2 mb-6 border-b border-zinc-800 p-1 bg-black rounded-xl">
                 <button onClick={() => setAddMode('single')} className={`flex-1 py-2 text-xs font-bold uppercase tracking-wider rounded-lg transition-all ${addMode === 'single' ? 'bg-zinc-800 text-white' : 'text-zinc-600'}`}>Individual</button>
                 <button onClick={() => setAddMode('routine')} className={`flex-1 py-2 text-xs font-bold uppercase tracking-wider rounded-lg transition-all ${addMode === 'routine' ? 'bg-zinc-800 text-white' : 'text-zinc-600'}`}>Plantilla</button>
               </div>
-              
+
               {addMode === 'single' ? (
                 <form onSubmit={handleSaveNewItem} className="space-y-4">
                   <select required className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white text-sm focus:border-yellow-400 outline-none" value={newExData.name} onChange={handleSelectExerciseName}>
                     <option value="">Elegir ejercicio...</option>
                     {exercisesLibrary.map(ex => <option key={ex.id} value={ex.name}>{ex.name}</option>)}
                   </select>
-                  
                   <div className="grid grid-cols-3 gap-3">
                     <input type="number" placeholder="Sets" className="bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white text-sm text-center" value={newExData.sets} onChange={e => setNewExData({...newExData, sets: e.target.value})} />
                     <input type="text" placeholder="Reps" className="bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white text-sm text-center" value={newExData.reps} onChange={e => setNewExData({...newExData, reps: e.target.value})} />
                     <input type="text" placeholder="Peso" className="bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white text-sm text-center" value={newExData.weight} onChange={e => setNewExData({...newExData, weight: e.target.value})} />
                   </div>
-
-                  {/* SELECTOR DE RIR */}
+                  
+                  {/* SELECTOR RIR */}
                   <select className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white text-sm focus:border-yellow-400 outline-none font-medium" value={newExData.rir} onChange={e => setNewExData({...newExData, rir: e.target.value})}>
                     <option value="5">RIR 5 (Muy fácil / Calentamiento)</option>
                     <option value="4">RIR 4 (Fácil)</option>
@@ -332,7 +333,10 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary }) {
                 </form>
               ) : (
                 <form onSubmit={handleSaveNewItem} className="space-y-4">
-                  <select required className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white text-sm focus:border-yellow-400 outline-none" value={selectedRoutineId} onChange={(e) => setSelectedRoutineId(e.target.value)}><option value="">Elegir plantilla...</option>{routines.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}</select>
+                  <select required className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white text-sm focus:border-yellow-400 outline-none" value={selectedRoutineId} onChange={(e) => setSelectedRoutineId(e.target.value)}>
+                    <option value="">Elegir plantilla...</option>
+                    {routines.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                  </select>
                   <button type="submit" disabled={!selectedRoutineId} className="w-full bg-yellow-400 disabled:opacity-50 disabled:bg-zinc-800 text-black font-black py-4 rounded-xl uppercase tracking-widest mt-2 transition-colors">Volcar Plantilla</button>
                 </form>
               )}
@@ -341,12 +345,25 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary }) {
         </div>
       )}
 
+      {/* --- MODAL: REPLICAR DÍA (CLONAR) --- */}
       {isCloneModalOpen && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 animate-in fade-in">
           <div className="bg-zinc-950 w-full max-w-md rounded-3xl border border-zinc-800 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-            <div className="p-6 border-b border-zinc-800 bg-zinc-900/50 text-center"><h2 className="text-xl font-black text-white uppercase italic tracking-tighter">Replicar en Calendario</h2><p className="text-zinc-400 text-xs mt-1">Selecciona los días para pegar la rutina</p></div>
+            <div className="p-6 border-b border-zinc-800 bg-zinc-900/50 text-center">
+              <h2 className="text-xl font-black text-white uppercase italic tracking-tighter">Replicar en Calendario</h2>
+              <p className="text-zinc-400 text-xs mt-1">Selecciona los días para pegar la rutina</p>
+            </div>
             <div className="p-6 overflow-y-auto flex-1 flex flex-col items-center">
-              <Calendar onClickDay={handleToggleCloneDate} className="react-calendar-custom clone-mode" tileClassName={({ date }) => { const dId = formatDateId(date); if (dId === currentDateId) return 'bg-yellow-400 !text-black font-bold'; if (cloneDates.includes(dId)) return 'bg-green-500 !text-black font-bold shadow-[0_0_10px_rgba(34,197,94,0.5)]'; return null; }} />
+              <Calendar 
+                onClickDay={handleToggleCloneDate}
+                className="react-calendar-custom clone-mode"
+                tileClassName={({ date }) => {
+                  const dId = formatDateId(date);
+                  if (dId === currentDateId) return 'bg-yellow-400 !text-black font-bold';
+                  if (cloneDates.includes(dId)) return 'bg-green-500 !text-black font-bold shadow-[0_0_10px_rgba(34,197,94,0.5)]';
+                  return null;
+                }}
+              />
             </div>
             <div className="p-4 border-t border-zinc-800 bg-zinc-900 flex gap-3">
               <button onClick={() => { setIsCloneModalOpen(false); setCloneDates([]); }} className="flex-1 py-4 text-zinc-400 font-bold uppercase text-xs rounded-xl bg-black">Cancelar</button>
