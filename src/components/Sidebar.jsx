@@ -1,7 +1,7 @@
 import React from 'react';
 import { 
   BarChart3, Users, Calendar, Settings, LogOut, 
-  List, Layout, Bell, DollarSign 
+  List, Layout, Bell, DollarSign, ShieldCheck 
 } from 'lucide-react';
 
 export function Sidebar({ activeView, navigateTo, notificationCount = 0 }) {
@@ -40,8 +40,9 @@ export function Sidebar({ activeView, navigateTo, notificationCount = 0 }) {
         </h1>
       </div>
 
-      <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
+      <nav className="flex-1 p-4 space-y-2 overflow-y-auto custom-scrollbar">
         <SidebarItem icon={<BarChart3 />} label="Panel Principal" view="dashboard" />
+        <SidebarItem icon={<ShieldCheck />} label="El Gran Salón" view="community" />
         <SidebarItem icon={<Bell />} label="Notificaciones" view="notifications" badge={notificationCount} />
         <SidebarItem icon={<Users />} label="Clientes" view="clients" />
         <SidebarItem icon={<DollarSign />} label="Cobros" view="payments" />
