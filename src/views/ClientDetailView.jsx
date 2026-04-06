@@ -3,13 +3,14 @@ import Calendar from 'react-calendar';
 import 'react-calendar/dist/Calendar.css';
 import { 
   ChevronLeft, Plus, Trash2, Dumbbell, User, Calendar as CalendarIcon, 
-  Video, Copy, X, Save, MessageSquare, Send 
+  Video, Copy, X, Save, MessageSquare, Send, TrendingUp 
 } from 'lucide-react';
 import { collection, onSnapshot, doc, setDoc, updateDoc, deleteDoc, addDoc, query, orderBy } from 'firebase/firestore';
 import { db } from '../firebase';
+import ProgressChart from '../components/ProgressChart'; // <--- IMPORTAMOS EL GRÁFICO
 
 export default function ClientDetailView({ client, goBack, exercisesLibrary }) {
-  const [activeTab, setActiveTab] = useState('routine'); 
+  const [activeTab, setActiveTab] = useState('routine'); // 'routine', 'stats', 'chat'
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const messagesEndRef = useRef(null);
@@ -29,13 +30,7 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary }) {
 
   const rirColors = ['bg-[#ffe4c4]', 'bg-[#fcd34d]', 'bg-[#fbbf24]', 'bg-[#f97316]', 'bg-[#ef4444]', 'bg-[#b91c1c]'];
 
-  const formatDateId = (d) => {
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  };
-
+  const formatDateId = (d) => d.toISOString().split('T')[0];
   const currentDateId = formatDateId(date);
 
   useEffect(() => {
@@ -169,7 +164,7 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary }) {
   return (
     <div className="max-w-6xl mx-auto animate-in fade-in pb-10 flex flex-col h-[calc(100vh-80px)]">
       
-      {/* HEADER */}
+      {/* HEADER CLIENTE */}
       <div className="flex flex-col gap-4 mb-6">
         <div className="flex items-center justify-between bg-zinc-900 p-6 rounded-2xl border border-zinc-800">
           <div className="flex items-center gap-4">
@@ -185,17 +180,22 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary }) {
           </div>
         </div>
 
+        {/* TABS CON 3 PESTAÑAS */}
         <div className="flex gap-2">
-          <button onClick={() => setActiveTab('routine')} className={`flex items-center gap-2 px-6 py-3 rounded-xl font-bold uppercase tracking-wider text-sm transition-all ${activeTab === 'routine' ? 'bg-yellow-400 text-black shadow-lg' : 'bg-zinc-900 text-zinc-500 hover:text-white border border-zinc-800'}`}>
-            <CalendarIcon size={18}/> Entrenamientos
+          <button onClick={() => setActiveTab('routine')} className={`flex items-center justify-center gap-2 flex-1 py-3 rounded-xl font-bold uppercase tracking-wider text-xs transition-all ${activeTab === 'routine' ? 'bg-yellow-400 text-black shadow-lg' : 'bg-zinc-900 text-zinc-500 hover:text-white border border-zinc-800'}`}>
+            <CalendarIcon size={16}/> Rutina
           </button>
-          <button onClick={() => setActiveTab('chat')} className={`flex items-center gap-2 px-6 py-3 rounded-xl font-bold uppercase tracking-wider text-sm transition-all ${activeTab === 'chat' ? 'bg-yellow-400 text-black shadow-lg' : 'bg-zinc-900 text-zinc-500 hover:text-white border border-zinc-800'}`}>
-            <MessageSquare size={18}/> Chat Directo
+          <button onClick={() => setActiveTab('stats')} className={`flex items-center justify-center gap-2 flex-1 py-3 rounded-xl font-bold uppercase tracking-wider text-xs transition-all ${activeTab === 'stats' ? 'bg-yellow-400 text-black shadow-lg' : 'bg-zinc-900 text-zinc-500 hover:text-white border border-zinc-800'}`}>
+            <TrendingUp size={16}/> Progreso
+          </button>
+          <button onClick={() => setActiveTab('chat')} className={`flex items-center justify-center gap-2 flex-1 py-3 rounded-xl font-bold uppercase tracking-wider text-xs transition-all ${activeTab === 'chat' ? 'bg-yellow-400 text-black shadow-lg' : 'bg-zinc-900 text-zinc-500 hover:text-white border border-zinc-800'}`}>
+            <MessageSquare size={16}/> Chat
           </button>
         </div>
       </div>
 
-      {activeTab === 'routine' ? (
+      {/* --- VISTA 1: RUTINA --- */}
+      {activeTab === 'routine' && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 overflow-hidden">
           <div className="lg:col-span-1 overflow-y-auto pr-2 custom-scrollbar">
             <div className="bg-zinc-900 p-6 rounded-2xl border border-zinc-800 shadow-xl">
@@ -232,7 +232,6 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary }) {
                         <button onClick={() => handleRemoveExercise(idx)} className="text-zinc-600 hover:text-red-500 p-2 transition-colors"><Trash2 size={20}/></button>
                       </div>
 
-                      {/* BARRA ESCALA RIR */}
                       {ex.rir && (
                         <div className="mt-2 bg-zinc-900/50 p-3 rounded-xl border border-zinc-800/50">
                           <div className="flex justify-between items-center mb-1.5">
@@ -255,7 +254,17 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary }) {
             </div>
           </div>
         </div>
-      ) : (
+      )}
+
+      {/* --- VISTA 2: ESTADÍSTICAS --- */}
+      {activeTab === 'stats' && (
+        <div className="flex-1 overflow-y-auto">
+          <ProgressChart clientId={client.id} />
+        </div>
+      )}
+
+      {/* --- VISTA 3: CHAT --- */}
+      {activeTab === 'chat' && (
         <div className="bg-zinc-900 rounded-2xl border border-zinc-800 flex flex-col h-full overflow-hidden shadow-xl">
           <div className="p-4 border-b border-zinc-800 bg-zinc-950/50 flex items-center gap-3 shrink-0">
             <MessageSquare className="text-yellow-400" size={24}/>
@@ -319,7 +328,6 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary }) {
                     <input type="text" placeholder="Peso" className="bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white text-sm text-center" value={newExData.weight} onChange={e => setNewExData({...newExData, weight: e.target.value})} />
                   </div>
                   
-                  {/* SELECTOR RIR */}
                   <select className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white text-sm focus:border-yellow-400 outline-none font-medium" value={newExData.rir} onChange={e => setNewExData({...newExData, rir: e.target.value})}>
                     <option value="5">RIR 5 (Muy fácil / Calentamiento)</option>
                     <option value="4">RIR 4 (Fácil)</option>
