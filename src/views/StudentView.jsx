@@ -3,7 +3,7 @@ import Calendar from 'react-calendar';
 import 'react-calendar/dist/Calendar.css';
 import { 
   Dumbbell, CheckCircle, User, Menu, X, LogOut, MessageSquare, Send, 
-  AlertTriangle, Trophy, CreditCard, ExternalLink, ChevronRight, Video, Bell, Users, BarChart3
+  AlertTriangle, Trophy, CreditCard, ExternalLink, ChevronRight, Video, Bell, Users, TrendingUp
 } from 'lucide-react';
 import { doc, getDoc, collection, onSnapshot, setDoc, addDoc, query, orderBy, updateDoc } from 'firebase/firestore';
 import { getAuth, signOut } from 'firebase/auth';
@@ -79,7 +79,6 @@ export default function StudentView({ clientId }) {
       const snap = await getDoc(docRef);
       if (snap.exists()) {
         const data = snap.data();
-        // Si ayer había rutina, no se finalizó y no se dio excusa aún, mostramos el modal
         if (!data.isFinalized && !data.missedReason && data.exercises && data.exercises.length > 0) {
           setMissedWorkout({ id: yId, date: yesterday, name: data.exercises[0]?.name || 'Entrenamiento' });
         }
@@ -137,11 +136,9 @@ export default function StudentView({ clientId }) {
     if (!missedWorkout || !missedReason.trim()) return;
 
     try {
-      // 1. Actualizar sesión de ayer
       await updateDoc(doc(db, 'clients', client.id, 'sessions', missedWorkout.id), {
         missedReason: missedReason
       });
-      // 2. Notificar al coach
       await addDoc(collection(db, 'trainerNotifications'), {
         type: 'missed_workout',
         clientId: client.id,
@@ -151,7 +148,6 @@ export default function StudentView({ clientId }) {
         read: false,
         createdAt: new Date()
       });
-      // 3. Enviar al chat automáticamente
       await addDoc(collection(db, 'clients', client.id, 'messages'), {
         text: `Sistema: No pude entrenar ayer (${missedWorkout.date.toLocaleDateString()}). Motivo: ${missedReason}`,
         sender: 'system',
@@ -554,22 +550,34 @@ export default function StudentView({ clientId }) {
 
       {/* NAV BAR INFERIOR (5 Botones) */}
       <nav className="fixed bottom-0 left-0 right-0 bg-zinc-950/90 backdrop-blur-xl border-t border-zinc-800 p-3 pb-6 flex justify-between items-center z-[40]">
-        <button onClick={() => setCurrentView('workout')} className={`flex flex-col items-center justify-center gap-1.5 w-1/5 transition-colors ${currentView === 'workout' ? 'text-yellow-400' : 'text-zinc-500'}`}>
+        <button 
+          onClick={() => setCurrentView('workout')} 
+          className={`flex flex-col items-center justify-center gap-1.5 w-1/5 transition-colors ${currentView === 'workout' ? 'text-yellow-400' : 'text-zinc-500'}`}
+        >
           <Dumbbell size={22}/>
           <span className="text-[8px] font-black uppercase tracking-wider">Rutina</span>
         </button>
         
-        <button onClick={() => setCurrentView('community')} className={`flex flex-col items-center justify-center gap-1.5 w-1/5 transition-colors ${currentView === 'community' ? 'text-yellow-400' : 'text-zinc-500'}`}>
+        <button 
+          onClick={() => setCurrentView('community')} 
+          className={`flex flex-col items-center justify-center gap-1.5 w-1/5 transition-colors ${currentView === 'community' ? 'text-yellow-400' : 'text-zinc-500'}`}
+        >
           <Users size={22}/>
           <span className="text-[8px] font-black uppercase tracking-wider">Salón</span>
         </button>
         
-        <button onClick={() => setCurrentView('stats')} className={`flex flex-col items-center justify-center gap-1.5 w-1/5 transition-colors ${currentView === 'stats' ? 'text-yellow-400' : 'text-zinc-500'}`}>
-          <BarChart3 size={22}/>
-          <span className="text-[8px] font-black uppercase tracking-wider">Estadística</span>
+        <button 
+          onClick={() => setCurrentView('stats')} 
+          className={`flex flex-col items-center justify-center gap-1.5 w-1/5 transition-colors ${currentView === 'stats' ? 'text-yellow-400' : 'text-zinc-500'}`}
+        >
+          <TrendingUp size={22}/>
+          <span className="text-[8px] font-black uppercase tracking-wider">Progreso</span>
         </button>
         
-        <button onClick={() => setCurrentView('chat')} className={`flex flex-col items-center justify-center gap-1.5 w-1/5 relative transition-colors ${currentView === 'chat' ? 'text-yellow-400' : 'text-zinc-500'}`}>
+        <button 
+          onClick={() => setCurrentView('chat')} 
+          className={`flex flex-col items-center justify-center gap-1.5 w-1/5 relative transition-colors ${currentView === 'chat' ? 'text-yellow-400' : 'text-zinc-500'}`}
+        >
           <div className="relative">
             <MessageSquare size={22}/>
             {unreadCount > 0 && <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border border-black"></span>}
@@ -577,7 +585,10 @@ export default function StudentView({ clientId }) {
           <span className="text-[8px] font-black uppercase tracking-wider">Chat</span>
         </button>
         
-        <button onClick={() => setCurrentView('profile')} className={`flex flex-col items-center justify-center gap-1.5 w-1/5 transition-colors ${currentView === 'profile' ? 'text-yellow-400' : 'text-zinc-500'}`}>
+        <button 
+          onClick={() => setCurrentView('profile')} 
+          className={`flex flex-col items-center justify-center gap-1.5 w-1/5 transition-colors ${currentView === 'profile' ? 'text-yellow-400' : 'text-zinc-500'}`}
+        >
           <User size={22}/>
           <span className="text-[8px] font-black uppercase tracking-wider">Perfil</span>
         </button>
