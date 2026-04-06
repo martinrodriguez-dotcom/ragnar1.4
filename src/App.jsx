@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Menu, Dumbbell, Settings, BarChart3, Users, Calendar, X, LogOut, List, Layout, Bell, DollarSign } from 'lucide-react';
 
 // --- Firebase ---
-import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, orderBy, where, getDocs } from 'firebase/firestore';
+import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, orderBy, where, getDocs, setDoc, getDoc } from 'firebase/firestore';
 import { getAuth, onAuthStateChanged, signOut } from 'firebase/auth';
 import { db } from './firebase'; 
 
@@ -19,7 +19,7 @@ import StudentView from './views/StudentView';
 import StudentRegistration from './views/StudentRegistration';
 import NotificationsView from './views/NotificationsView';
 import SettingsView from './views/SettingsView';
-import PaymentsView from './views/PaymentsView'; // <--- VISTA DE COBROS
+import PaymentsView from './views/PaymentsView';
 
 export default function App() {
   // --- ESTADOS GLOBALES ---
@@ -43,19 +43,73 @@ export default function App() {
 
   const auth = getAuth();
 
+  // --- ESCÁNER AUTOMÁTICO DE COBROS ---
+  const checkPaymentsStatus = async (clientsData) => {
+    const today = new Date();
+    const currentMonthId = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+
+    for (const client of clientsData) {
+      if (!client.startDate) continue;
+
+      const start = new Date(client.startDate);
+      const day = start.getDate();
+      // Creamos la fecha de vencimiento para este mes
+      const expirationDate = new Date(today.getFullYear(), today.getMonth(), day);
+      const diffTime = expirationDate - today;
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+      // 1. Verificar si ya pagó este mes
+      const paymentRef = doc(db, 'clients', client.id, 'payments', currentMonthId);
+      const paymentSnap = await getDoc(paymentRef);
+      const hasPaid = paymentSnap.exists() && paymentSnap.data().status === 'paid';
+
+      // Si no ha pagado, evaluamos si debemos crear notificación
+      if (!hasPaid) {
+        let type = null;
+        let message = "";
+
+        if (diffDays <= 0) {
+          type = 'payment_expired';
+          message = `CUOTA VENCIDA: ${client.name} ya debería haber pagado su cuota del mes.`;
+        } else if (diffDays <= 10) {
+          type = 'payment_warning';
+          message = `PRÓXIMO VENCIMIENTO: A ${client.name} le quedan ${diffDays} días para el pago de su cuota.`;
+        }
+
+        if (type) {
+          // Usamos un ID único por mes y por cliente para no duplicar la notificación si recarga la página
+          const notifId = `notif_pay_${client.id}_${currentMonthId}`;
+          const notifRef = doc(db, 'trainerNotifications', notifId);
+          const notifSnap = await getDoc(notifRef);
+
+          // Si la notificación no existe, o si cambió de warning a expired, la guardamos/actualizamos
+          if (!notifSnap.exists() || notifSnap.data().type !== type) {
+            await setDoc(notifRef, {
+              id: notifId,
+              type: type,
+              clientId: client.id,
+              clientName: client.name,
+              message: message,
+              read: false,
+              createdAt: new Date(),
+              monthId: currentMonthId
+            });
+          }
+        }
+      }
+    }
+  };
+
   // --- EFECTO 1: Detectar Usuario y Parámetros de URL ---
   useEffect(() => {
-    // 1. Chequear si hay link de invitación (?invite=XYZ)
     const params = new URLSearchParams(window.location.search);
     const inviteParam = params.get('invite');
     if (inviteParam) {
       setInviteId(inviteParam);
     }
 
-    // 2. Escuchar Auth de Firebase
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
-        // Usuario logueado: ¿Es Alumno o Entrenador?
         await checkUserRole(currentUser.uid);
         setUser(currentUser);
       } else {
@@ -68,7 +122,6 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // --- Función para determinar ROL ---
   const checkUserRole = async (uid) => {
     const q = query(collection(db, 'clients'), where('studentUserId', '==', uid));
     const querySnapshot = await getDocs(q);
@@ -82,17 +135,19 @@ export default function App() {
     }
   };
 
-  // --- EFECTO 2: Cargar Datos (Solo si es Entrenador) ---
+  // --- EFECTO 2: Cargar Datos (Solo Entrenador) ---
   useEffect(() => {
     if (!user || userRole !== 'trainer') return;
 
-    // A. Escuchar CLIENTES
+    // A. Escuchar CLIENTES y correr el Escáner de Cobros
     const unsubClients = onSnapshot(collection(db, 'clients'), (snapshot) => {
       const clientsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setClients(clientsData);
+      // Ejecutamos el escáner cada vez que cambian los datos de los clientes
+      checkPaymentsStatus(clientsData);
     });
 
-    // B. Escuchar EJERCICIOS (Ordenados alfabéticamente)
+    // B. Escuchar EJERCICIOS
     const qExercises = query(collection(db, 'exercises'), orderBy('name'));
     const unsubExercises = onSnapshot(qExercises, (snapshot) => {
       const exData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -127,7 +182,7 @@ export default function App() {
     setIsMobileMenuOpen(false);
   };
 
-  // --- FUNCIONES DE GESTIÓN DE CLIENTES (CRUD) ---
+  // --- FUNCIONES DE GESTIÓN DE CLIENTES ---
   const handleAddClient = async (data) => {
     const { id, ...rest } = data;
     await addDoc(collection(db, 'clients'), { ...rest, createdAt: new Date(), trainerId: user.uid });
@@ -138,7 +193,7 @@ export default function App() {
       const clientRef = doc(db, 'clients', updatedData.id);
       await updateDoc(clientRef, updatedData);
     } catch (error) {
-      console.error("Error al actualizar cliente:", error);
+      console.error(error);
       alert("Error al actualizar.");
     }
   };
@@ -148,7 +203,7 @@ export default function App() {
       try {
           await deleteDoc(doc(db, 'clients', clientId));
       } catch (error) {
-          console.error("Error al eliminar cliente:", error);
+          console.error(error);
           alert("Error al eliminar.");
       }
     }
@@ -165,7 +220,7 @@ export default function App() {
       const { id, ...rest } = updatedData;
       await updateDoc(exRef, rest);
     } catch (error) {
-      console.error("Error al actualizar ejercicio:", error);
+      console.error(error);
       alert("Error al actualizar el ejercicio.");
     }
   };
@@ -178,16 +233,14 @@ export default function App() {
 
   // --- RENDERIZADO ---
 
-  // 1. Cargando
   if (loadingAuth) {
     return (
       <div className="h-screen bg-black flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-yellow-400"></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-yellow-400"></div>
       </div>
     );
   }
 
-  // 2. CASO INVITACIÓN
   if (inviteId && (!user || (user && userRole !== 'student'))) {
     return <StudentRegistration inviteId={inviteId} onRegisterSuccess={() => {
       window.history.pushState({}, document.title, window.location.pathname);
@@ -195,17 +248,15 @@ export default function App() {
     }} />;
   }
 
-  // 3. CASO ALUMNO LOGUEADO
   if (user && userRole === 'student' && studentProfileId) {
     return <StudentView clientId={studentProfileId} />;
   }
 
-  // 4. CASO NO LOGUEADO (Login General)
   if (!user) {
     return <LoginView onLoginSuccess={() => {}} />;
   }
 
-  // 5. CASO ENTRENADOR (Panel Completo)
+  // --- INTERFAZ DEL ENTRENADOR ---
   return (
     <div className="flex h-screen bg-black text-zinc-100 font-sans overflow-hidden selection:bg-yellow-400 selection:text-black">
       
@@ -214,16 +265,16 @@ export default function App() {
         <Sidebar activeView={activeView} navigateTo={navigateTo} notificationCount={unreadCount} />
       </div>
       
-      {/* Menú Móvil (Overlay) */}
+      {/* Menú Móvil */}
       {isMobileMenuOpen && (
         <div className="fixed inset-0 z-50 bg-black/95 md:hidden flex flex-col animate-in fade-in slide-in-from-left-10 backdrop-blur-sm">
           <div className="p-4 flex justify-between items-center border-b border-zinc-800">
-            <h2 className="text-white font-bold text-xl">Menú</h2>
+            <h2 className="text-white font-bold text-xl uppercase tracking-tighter">Menú</h2>
             <button onClick={() => setIsMobileMenuOpen(false)} className="text-zinc-400 hover:text-white p-2">
               <X size={24} />
             </button>
           </div>
-          <div className="p-4 flex flex-col gap-2">
+          <div className="p-4 flex flex-col gap-2 overflow-y-auto">
             <button onClick={() => navigateTo('dashboard')} className="p-4 text-left text-zinc-400 hover:text-white border-b border-zinc-900 flex items-center gap-3"><BarChart3 size={20}/> Panel Principal</button>
             <button onClick={() => navigateTo('notifications')} className="p-4 text-left text-zinc-400 hover:text-white border-b border-zinc-900 flex justify-between items-center">
                <div className="flex items-center gap-3"><Bell size={20}/> Notificaciones</div>
@@ -236,32 +287,20 @@ export default function App() {
             <button onClick={() => navigateTo('calendar')} className="p-4 text-left text-zinc-400 hover:text-white border-b border-zinc-900 flex items-center gap-3"><Calendar size={20}/> Agenda</button>
             <button onClick={() => navigateTo('settings')} className="p-4 text-left text-zinc-400 hover:text-white border-b border-zinc-900 flex items-center gap-3"><Settings size={20}/> Configuración</button>
             
-            <button 
-              onClick={handleLogout} 
-              className="p-4 text-left text-red-400 hover:text-red-300 font-bold flex items-center gap-3 mt-4"
-            >
+            <button onClick={handleLogout} className="p-4 text-left text-red-400 hover:text-red-300 font-bold flex items-center gap-3 mt-4">
               <LogOut size={20} /> Cerrar Sesión
             </button>
           </div>
         </div>
       )}
 
-      {/* Área de Contenido Principal */}
+      {/* Main Content */}
       <main className="flex-1 flex flex-col h-full overflow-hidden relative bg-black">
         
-        {/* Header Móvil */}
-        <header className="md:hidden flex items-center justify-between p-4 bg-zinc-950 border-b border-zinc-800">
+        <header className="md:hidden flex items-center justify-between p-4 bg-zinc-950 border-b border-zinc-800 shadow-xl">
           <div className="flex items-center gap-2">
-             <img 
-               src="/logo.png" 
-               alt="Ragnar Training Logo" 
-               className="w-8 h-8 object-contain drop-shadow-[0_0_8px_rgba(250,204,21,0.3)]"
-               onError={(e) => { e.target.style.display = 'none'; }}
-             />
-             <span className="font-black tracking-tighter text-lg italic">
-               <span className="text-yellow-400">RAGNAR</span>
-               <span className="text-white">-TRAINING</span>
-             </span>
+             <img src="/logo.png" alt="Ragnar Training Logo" className="w-8 h-8 object-contain drop-shadow-[0_0_8px_rgba(250,204,21,0.3)]" onError={(e) => { e.target.style.display = 'none'; }}/>
+             <span className="font-black tracking-tighter text-lg italic"><span className="text-yellow-400">RAGNAR</span><span className="text-white">-TRAINING</span></span>
           </div>
           <div className="flex items-center gap-3">
              <button onClick={() => navigateTo('notifications')} className="relative p-2 text-zinc-400">
@@ -274,59 +313,20 @@ export default function App() {
           </div>
         </header>
 
-        {/* Contenedor de Vistas con Scroll */}
-        <div className="flex-1 overflow-y-auto p-4 md:p-8">
-          
-          {activeView === 'dashboard' && (
-            <DashboardView clients={clients} navigateTo={navigateTo} onAddClient={handleAddClient} />
-          )}
-          
+        <div className="flex-1 overflow-y-auto p-4 md:p-8 no-scrollbar">
+          {activeView === 'dashboard' && <DashboardView clients={clients} navigateTo={navigateTo} onAddClient={handleAddClient} />}
           {activeView === 'notifications' && <NotificationsView />}
-
-          {activeView === 'clients' && (
-            <ClientsView 
-              clients={clients} 
-              navigateTo={navigateTo} 
-              onUpdateClient={handleUpdateClientData}
-              onDeleteClient={handleDeleteClient}
-            />
-          )}
-
+          {activeView === 'clients' && <ClientsView clients={clients} navigateTo={navigateTo} onUpdateClient={handleUpdateClientData} onDeleteClient={handleDeleteClient} />}
           {activeView === 'payments' && <PaymentsView />}
-
-          {activeView === 'exercises' && (
-            <ExercisesView 
-              exercises={exercises} 
-              onAddExercise={handleAddExercise}
-              onUpdateExercise={handleUpdateExercise}
-              onDeleteExercise={handleDeleteExercise}
-            />
-          )}
-
-          {activeView === 'routines' && (
-            <RoutinesView exercisesLibrary={exercises} />
-          )}
-          
-          {activeView === 'client-detail' && selectedClient && (
-            <ClientDetailView 
-              client={selectedClient} 
-              goBack={() => navigateTo('clients')} 
-              exercisesLibrary={exercises}
-            />
-          )}
-          
+          {activeView === 'exercises' && <ExercisesView exercises={exercises} onAddExercise={handleAddExercise} onUpdateExercise={handleUpdateExercise} onDeleteExercise={handleDeleteExercise} />}
+          {activeView === 'routines' && <RoutinesView exercisesLibrary={exercises} />}
+          {activeView === 'client-detail' && selectedClient && <ClientDetailView client={selectedClient} goBack={() => navigateTo('clients')} exercisesLibrary={exercises} />}
           {activeView === 'calendar' && <CalendarView />}
-          
           {activeView === 'settings' && <SettingsView />}
-
         </div>
       </main>
 
-      {/* Botón Flotante de Cerrar Sesión (Escritorio) */}
-      <button 
-        onClick={handleLogout}
-        className="hidden md:flex fixed bottom-6 left-6 w-52 items-center gap-3 text-zinc-500 hover:text-red-400 transition-colors p-2 rounded z-10"
-      >
+      <button onClick={handleLogout} className="hidden md:flex fixed bottom-6 left-6 w-52 items-center gap-3 text-zinc-500 hover:text-red-400 transition-colors p-2 rounded z-10">
         <LogOut size={20} />
         <span className="font-medium text-sm">Cerrar Sesión</span>
       </button>
