@@ -21,11 +21,15 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary }) {
   
   const [isAddingEx, setIsAddingEx] = useState(false);
   const [addMode, setAddMode] = useState('single');
-  const [newExData, setNewExData] = useState({ name: '', sets: 4, reps: '10', weight: '', videoUrl: '' });
+  // NUEVO: Agregamos el RIR por defecto en 2
+  const [newExData, setNewExData] = useState({ name: '', sets: 4, reps: '10', weight: '', rir: '2', videoUrl: '' });
   const [selectedRoutineId, setSelectedRoutineId] = useState('');
 
   const [isCloneModalOpen, setIsCloneModalOpen] = useState(false);
   const [cloneDates, setCloneDates] = useState([]);
+
+  // Array de colores para la barra RIR (Piel a Rojo)
+  const rirColors = ['bg-[#ffe4c4]', 'bg-[#fcd34d]', 'bg-[#fbbf24]', 'bg-[#f97316]', 'bg-[#ef4444]', 'bg-[#b91c1c]'];
 
   const formatDateId = (d) => {
     const year = d.getFullYear();
@@ -71,7 +75,6 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary }) {
     return () => unsubRoutines();
   }, []);
 
-  // CARGAR CHAT Y MARCAR COMO LEÍDO
   useEffect(() => {
     if (!client || activeTab !== 'chat') return;
     const q = query(collection(db, 'clients', client.id, 'messages'), orderBy('createdAt', 'asc'));
@@ -79,7 +82,6 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary }) {
       const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setMessages(msgs);
       
-      // Marcar mensajes del alumno como leídos al abrir
       msgs.forEach(async (m) => {
         if (m.sender === 'student' && !m.read) {
           await updateDoc(doc(db, 'clients', client.id, 'messages', m.id), { read: true });
@@ -96,10 +98,7 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary }) {
     if (!newMessage.trim()) return;
     try {
       await addDoc(collection(db, 'clients', client.id, 'messages'), {
-        text: newMessage,
-        sender: 'trainer',
-        createdAt: new Date(),
-        read: false // <--- NUEVO: Permite que el alumno sepa que tiene mensaje nuevo
+        text: newMessage, sender: 'trainer', createdAt: new Date(), read: false 
       });
       setNewMessage('');
     } catch (error) { console.error(error); }
@@ -123,7 +122,7 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary }) {
       const routine = routines.find(r => r.id === selectedRoutineId);
       if (routine && routine.exercises) {
         newExercises = routine.exercises.map(ex => ({
-           name: ex.name, sets: ex.sets || 4, reps: ex.reps || '10', weight: ex.weight || '', videoUrl: ex.videoUrl || '', id: Math.random().toString(36).substr(2, 9)
+           name: ex.name, sets: ex.sets || 4, reps: ex.reps || '10', weight: ex.weight || '', rir: ex.rir || '2', videoUrl: ex.videoUrl || '', id: Math.random().toString(36).substr(2, 9)
         }));
       }
     }
@@ -134,7 +133,7 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary }) {
         date: currentDateId, exercises: updatedSession, updatedAt: new Date()
       }, { merge: true });
       setIsAddingEx(false);
-      setNewExData({ name: '', sets: 4, reps: '10', weight: '', videoUrl: '' });
+      setNewExData({ name: '', sets: 4, reps: '10', weight: '', rir: '2', videoUrl: '' });
       setSelectedRoutineId('');
     } catch (error) { console.error(error); }
   };
@@ -172,7 +171,7 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary }) {
   return (
     <div className="max-w-6xl mx-auto animate-in fade-in pb-10 flex flex-col h-[calc(100vh-80px)]">
       
-      {/* HEADER CLIENTE Y PESTAÑAS */}
+      {/* HEADER */}
       <div className="flex flex-col gap-4 mb-6">
         <div className="flex items-center justify-between bg-zinc-900 p-6 rounded-2xl border border-zinc-800">
           <div className="flex items-center gap-4">
@@ -220,18 +219,35 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary }) {
                 </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-6 space-y-3 bg-zinc-950/20 custom-scrollbar">
+              <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-zinc-950/20 custom-scrollbar">
                 {dailySession.length > 0 ? (
                   dailySession.map((ex, idx) => (
-                    <div key={idx} className="bg-black p-4 rounded-xl border border-zinc-800 flex justify-between items-center group hover:border-yellow-400/50 transition-all">
-                      <div className="flex items-center gap-4">
-                        <span className="bg-zinc-900 text-zinc-500 font-bold w-10 h-10 rounded-full flex items-center justify-center border border-zinc-800 group-hover:text-yellow-400 group-hover:border-yellow-400/30 transition-colors">{idx + 1}</span>
-                        <div>
-                          <div className="flex items-center gap-2"><h4 className="font-bold text-white text-lg leading-none">{ex.name}</h4>{ex.videoUrl && <Video size={16} className="text-blue-500 cursor-help" />}</div>
-                          <p className="text-zinc-500 text-sm mt-1"><span className="text-zinc-300">{ex.sets}</span> series x <span className="text-zinc-300">{ex.reps}</span> reps {ex.weight && ` | ${ex.weight}`}</p>
+                    <div key={idx} className="bg-black p-5 rounded-2xl border border-zinc-800 flex flex-col group hover:border-yellow-400/50 transition-all shadow-md">
+                      <div className="flex justify-between items-start mb-3">
+                        <div className="flex items-center gap-4">
+                          <span className="bg-zinc-900 text-zinc-500 font-bold w-10 h-10 rounded-full flex items-center justify-center border border-zinc-800 group-hover:text-yellow-400 group-hover:border-yellow-400/30 transition-colors">{idx + 1}</span>
+                          <div>
+                            <div className="flex items-center gap-2"><h4 className="font-black text-white text-lg leading-none uppercase">{ex.name}</h4>{ex.videoUrl && <Video size={16} className="text-blue-500 cursor-help" />}</div>
+                            <p className="text-zinc-400 text-sm mt-1 font-medium"><span className="text-white">{ex.sets}</span> series x <span className="text-white">{ex.reps}</span> reps {ex.weight && ` | ${ex.weight}`}</p>
+                          </div>
                         </div>
+                        <button onClick={() => handleRemoveExercise(idx)} className="text-zinc-600 hover:text-red-500 p-2 transition-colors"><Trash2 size={20}/></button>
                       </div>
-                      <button onClick={() => handleRemoveExercise(idx)} className="text-zinc-600 hover:text-red-500 p-2 transition-colors"><Trash2 size={20}/></button>
+
+                      {/* NUEVO: BARRA ESCALA RIR */}
+                      {ex.rir && (
+                        <div className="mt-2 bg-zinc-900/50 p-3 rounded-xl border border-zinc-800/50">
+                          <div className="flex justify-between items-center mb-1.5">
+                             <span className="text-[10px] text-zinc-500 font-black uppercase tracking-widest flex items-center gap-1">Intensidad RIR</span>
+                             <span className="text-[10px] text-white font-black bg-zinc-800 px-2 py-0.5 rounded">RIR {ex.rir}</span>
+                          </div>
+                          <div className="flex gap-1 h-2">
+                             {[5, 4, 3, 2, 1, 0].map((val, i) => (
+                                <div key={val} className={`flex-1 rounded-full transition-colors ${val >= parseInt(ex.rir) ? rirColors[i] : 'bg-zinc-800'}`}></div>
+                             ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))
                 ) : (
@@ -278,6 +294,7 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary }) {
         </div>
       )}
 
+      {/* --- MODAL: AGREGAR EJERCICIO --- */}
       {isAddingEx && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 animate-in fade-in">
           <div className="bg-zinc-950 w-full max-w-md rounded-3xl border border-zinc-800 shadow-2xl relative overflow-hidden">
@@ -287,15 +304,31 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary }) {
                 <button onClick={() => setAddMode('single')} className={`flex-1 py-2 text-xs font-bold uppercase tracking-wider rounded-lg transition-all ${addMode === 'single' ? 'bg-zinc-800 text-white' : 'text-zinc-600'}`}>Individual</button>
                 <button onClick={() => setAddMode('routine')} className={`flex-1 py-2 text-xs font-bold uppercase tracking-wider rounded-lg transition-all ${addMode === 'routine' ? 'bg-zinc-800 text-white' : 'text-zinc-600'}`}>Plantilla</button>
               </div>
+              
               {addMode === 'single' ? (
                 <form onSubmit={handleSaveNewItem} className="space-y-4">
-                  <select required className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white text-sm focus:border-yellow-400 outline-none" value={newExData.name} onChange={handleSelectExerciseName}><option value="">Elegir ejercicio...</option>{exercisesLibrary.map(ex => <option key={ex.id} value={ex.name}>{ex.name}</option>)}</select>
+                  <select required className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white text-sm focus:border-yellow-400 outline-none" value={newExData.name} onChange={handleSelectExerciseName}>
+                    <option value="">Elegir ejercicio...</option>
+                    {exercisesLibrary.map(ex => <option key={ex.id} value={ex.name}>{ex.name}</option>)}
+                  </select>
+                  
                   <div className="grid grid-cols-3 gap-3">
                     <input type="number" placeholder="Sets" className="bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white text-sm text-center" value={newExData.sets} onChange={e => setNewExData({...newExData, sets: e.target.value})} />
                     <input type="text" placeholder="Reps" className="bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white text-sm text-center" value={newExData.reps} onChange={e => setNewExData({...newExData, reps: e.target.value})} />
                     <input type="text" placeholder="Peso" className="bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white text-sm text-center" value={newExData.weight} onChange={e => setNewExData({...newExData, weight: e.target.value})} />
                   </div>
-                  <button type="submit" className="w-full bg-yellow-400 hover:bg-yellow-300 text-black font-black py-4 rounded-xl uppercase tracking-widest mt-2 transition-colors">Guardar Ejercicio</button>
+
+                  {/* SELECTOR DE RIR */}
+                  <select className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white text-sm focus:border-yellow-400 outline-none font-medium" value={newExData.rir} onChange={e => setNewExData({...newExData, rir: e.target.value})}>
+                    <option value="5">RIR 5 (Muy fácil / Calentamiento)</option>
+                    <option value="4">RIR 4 (Fácil)</option>
+                    <option value="3">RIR 3 (Moderado)</option>
+                    <option value="2">RIR 2 (Intenso)</option>
+                    <option value="1">RIR 1 (Muy intenso)</option>
+                    <option value="0">RIR 0 (Fallo muscular absoluto)</option>
+                  </select>
+
+                  <button type="submit" className="w-full bg-yellow-400 hover:bg-yellow-300 text-black font-black py-4 rounded-xl uppercase tracking-widest mt-2 transition-colors shadow-lg shadow-yellow-400/20">Guardar Ejercicio</button>
                 </form>
               ) : (
                 <form onSubmit={handleSaveNewItem} className="space-y-4">
