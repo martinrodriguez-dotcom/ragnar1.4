@@ -15,7 +15,7 @@ export default function DashboardView({ clients, navigateTo, onAddClient }) {
   
   const [completedList, setCompletedList] = useState([]);
   const [debtorsList, setDebtorsList] = useState([]);
-  const [trainerPlans, setTrainerPlans] = useState([]); // <--- NUEVO: Estado para los planes
+  const [trainerPlans, setTrainerPlans] = useState([]); 
   const [isLoading, setIsLoading] = useState(true);
 
   // Modal de Nuevo Cliente
@@ -245,6 +245,7 @@ export default function DashboardView({ clients, navigateTo, onAddClient }) {
           </div>
         </div>
       )}
+
     </div>
   );
 }
