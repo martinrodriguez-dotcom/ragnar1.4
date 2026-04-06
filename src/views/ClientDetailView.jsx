@@ -30,7 +30,13 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary }) {
 
   const rirColors = ['bg-[#ffe4c4]', 'bg-[#fcd34d]', 'bg-[#fbbf24]', 'bg-[#f97316]', 'bg-[#ef4444]', 'bg-[#b91c1c]'];
 
-  const formatDateId = (d) => d.toISOString().split('T')[0];
+  const formatDateId = (d) => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   const currentDateId = formatDateId(date);
 
   useEffect(() => {
@@ -186,7 +192,7 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary }) {
             <CalendarIcon size={16}/> Rutina
           </button>
           <button onClick={() => setActiveTab('stats')} className={`flex items-center justify-center gap-2 flex-1 py-3 rounded-xl font-bold uppercase tracking-wider text-xs transition-all ${activeTab === 'stats' ? 'bg-yellow-400 text-black shadow-lg' : 'bg-zinc-900 text-zinc-500 hover:text-white border border-zinc-800'}`}>
-            <BarChart3 size={16}/> Estadística
+            <BarChart3 size={16}/> Progreso
           </button>
           <button onClick={() => setActiveTab('chat')} className={`flex items-center justify-center gap-2 flex-1 py-3 rounded-xl font-bold uppercase tracking-wider text-xs transition-all ${activeTab === 'chat' ? 'bg-yellow-400 text-black shadow-lg' : 'bg-zinc-900 text-zinc-500 hover:text-white border border-zinc-800'}`}>
             <MessageSquare size={16}/> Chat
