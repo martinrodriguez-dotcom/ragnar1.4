@@ -3,12 +3,13 @@ import Calendar from 'react-calendar';
 import 'react-calendar/dist/Calendar.css';
 import { 
   Dumbbell, CheckCircle, User, Menu, X, LogOut, MessageSquare, Send, 
-  AlertTriangle, Trophy, CreditCard, ExternalLink, ChevronRight, Video, Bell, Users
+  AlertTriangle, Trophy, CreditCard, ExternalLink, ChevronRight, Video, Bell, Users, TrendingUp
 } from 'lucide-react';
 import { doc, getDoc, collection, onSnapshot, setDoc, addDoc, query, orderBy, updateDoc } from 'firebase/firestore';
 import { getAuth, signOut } from 'firebase/auth';
 import { db } from '../firebase';
 import CommunityView from './CommunityView';
+import ProgressChart from '../components/ProgressChart';
 
 export default function StudentView({ clientId }) {
   // --- ESTADOS DE DATOS ---
@@ -26,7 +27,7 @@ export default function StudentView({ clientId }) {
 
   // --- ESTADOS DE NAVEGACIÓN ---
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [currentView, setCurrentView] = useState('workout'); // 'workout' | 'chat' | 'profile' | 'community'
+  const [currentView, setCurrentView] = useState('workout'); // 'workout', 'chat', 'profile', 'community', 'stats'
 
   // --- CHAT Y NOTIFICACIONES ---
   const [messages, setMessages] = useState([]);
@@ -249,6 +250,7 @@ export default function StudentView({ clientId }) {
           </div>
           <div className="flex flex-col gap-6 text-2xl font-black uppercase italic">
             <button onClick={() => { setCurrentView('workout'); setIsMenuOpen(false); }} className={`text-left ${currentView === 'workout' ? 'text-yellow-400' : 'text-zinc-600'}`}>Mi Entrenamiento</button>
+            <button onClick={() => { setCurrentView('stats'); setIsMenuOpen(false); }} className={`text-left ${currentView === 'stats' ? 'text-yellow-400' : 'text-zinc-600'}`}>Progreso (Fuerza)</button>
             <button onClick={() => { setCurrentView('community'); setIsMenuOpen(false); }} className={`text-left ${currentView === 'community' ? 'text-yellow-400' : 'text-zinc-600'}`}>Salón Ragnar</button>
             <button onClick={() => { setCurrentView('chat'); setIsMenuOpen(false); }} className={`text-left flex items-center gap-4 ${currentView === 'chat' ? 'text-yellow-400' : 'text-zinc-600'}`}>
               Chat Directo {unreadCount > 0 && <span className="bg-red-500 text-white text-xs px-2 py-1 rounded-full not-italic font-sans">{unreadCount}</span>}
@@ -402,10 +404,6 @@ export default function StudentView({ clientId }) {
             )}
 
             <div className="bg-zinc-900 rounded-[2rem] border border-zinc-800 p-6">
-               <div className="flex items-center gap-2 mb-4">
-                 <Calendar size={18} className="text-yellow-400"/>
-                 <h3 className="text-sm font-black uppercase tracking-widest">Historial</h3>
-               </div>
                <Calendar 
                  onChange={handleDateChange} 
                  value={date} 
@@ -419,7 +417,14 @@ export default function StudentView({ clientId }) {
         {/* VISTA 2: EL GRAN SALÓN */}
         {currentView === 'community' && <CommunityView currentUserId={clientId} userName={client?.name} />}
 
-        {/* VISTA 3: CHAT */}
+        {/* VISTA 3: ESTADÍSTICAS */}
+        {currentView === 'stats' && (
+          <div className="space-y-6">
+            <ProgressChart clientId={client?.id} />
+          </div>
+        )}
+
+        {/* VISTA 4: CHAT */}
         {currentView === 'chat' && (
           <div className="bg-zinc-900 rounded-[2rem] border border-zinc-800 flex flex-col h-[65vh] shadow-xl overflow-hidden animate-in fade-in">
             <div className="p-4 border-b border-zinc-800 bg-zinc-950/50 flex items-center justify-between shrink-0">
@@ -472,7 +477,7 @@ export default function StudentView({ clientId }) {
           </div>
         )}
 
-        {/* VISTA 4: PERFIL Y PAGO */}
+        {/* VISTA 5: PERFIL Y PAGO */}
         {currentView === 'profile' && (
           <div className="space-y-6 animate-in fade-in">
              <div className="bg-zinc-900 rounded-[2rem] p-8 border border-zinc-800 text-center">
@@ -529,41 +534,49 @@ export default function StudentView({ clientId }) {
         )}
       </main>
 
-      {/* NAV BAR INFERIOR */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-zinc-950/80 backdrop-blur-xl border-t border-zinc-800 p-4 pb-8 flex justify-around items-center z-[40]">
+      {/* NAV BAR INFERIOR (5 Botones) */}
+      <nav className="fixed bottom-0 left-0 right-0 bg-zinc-950/80 backdrop-blur-xl border-t border-zinc-800 p-4 pb-8 flex justify-between items-center z-[40]">
         <button 
           onClick={() => setCurrentView('workout')} 
-          className={`flex flex-col items-center gap-1 w-1/4 ${currentView === 'workout' ? 'text-yellow-400' : 'text-zinc-600'}`}
+          className={`flex flex-col items-center justify-center gap-1 w-1/5 ${currentView === 'workout' ? 'text-yellow-400' : 'text-zinc-600'}`}
         >
-          <Dumbbell size={24}/>
-          <span className="text-[9px] font-black uppercase">Rutina</span>
+          <Dumbbell size={22}/>
+          <span className="text-[8px] font-black uppercase tracking-wider">Rutina</span>
         </button>
         
         <button 
           onClick={() => setCurrentView('community')} 
-          className={`flex flex-col items-center gap-1 w-1/4 ${currentView === 'community' ? 'text-yellow-400' : 'text-zinc-600'}`}
+          className={`flex flex-col items-center justify-center gap-1 w-1/5 ${currentView === 'community' ? 'text-yellow-400' : 'text-zinc-600'}`}
         >
-          <Users size={24}/>
-          <span className="text-[9px] font-black uppercase">Salón</span>
+          <Users size={22}/>
+          <span className="text-[8px] font-black uppercase tracking-wider">Salón</span>
+        </button>
+        
+        <button 
+          onClick={() => setCurrentView('stats')} 
+          className={`flex flex-col items-center justify-center gap-1 w-1/5 ${currentView === 'stats' ? 'text-yellow-400' : 'text-zinc-600'}`}
+        >
+          <TrendingUp size={22}/>
+          <span className="text-[8px] font-black uppercase tracking-wider">Progreso</span>
         </button>
         
         <button 
           onClick={() => setCurrentView('chat')} 
-          className={`flex flex-col items-center gap-1 w-1/4 relative ${currentView === 'chat' ? 'text-yellow-400' : 'text-zinc-600'}`}
+          className={`flex flex-col items-center justify-center gap-1 w-1/5 relative ${currentView === 'chat' ? 'text-yellow-400' : 'text-zinc-600'}`}
         >
           <div className="relative">
-            <MessageSquare size={24}/>
+            <MessageSquare size={22}/>
             {unreadCount > 0 && <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border border-black"></span>}
           </div>
-          <span className="text-[9px] font-black uppercase">Chat</span>
+          <span className="text-[8px] font-black uppercase tracking-wider">Chat</span>
         </button>
         
         <button 
           onClick={() => setCurrentView('profile')} 
-          className={`flex flex-col items-center gap-1 w-1/4 ${currentView === 'profile' ? 'text-yellow-400' : 'text-zinc-600'}`}
+          className={`flex flex-col items-center justify-center gap-1 w-1/5 ${currentView === 'profile' ? 'text-yellow-400' : 'text-zinc-600'}`}
         >
-          <User size={24}/>
-          <span className="text-[9px] font-black uppercase">Perfil</span>
+          <User size={22}/>
+          <span className="text-[8px] font-black uppercase tracking-wider">Perfil</span>
         </button>
       </nav>
 
