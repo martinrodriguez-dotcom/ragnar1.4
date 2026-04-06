@@ -9,25 +9,21 @@ import { collection, onSnapshot, doc, setDoc, getDoc, updateDoc, deleteDoc, addD
 import { db } from '../firebase';
 
 export default function ClientDetailView({ client, goBack, exercisesLibrary }) {
-  // --- ESTADOS DE PESTAÑAS Y CHAT ---
-  const [activeTab, setActiveTab] = useState('routine'); // 'routine' | 'chat'
+  const [activeTab, setActiveTab] = useState('routine'); 
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const messagesEndRef = useRef(null);
 
-  // --- ESTADOS DE RUTINA Y CALENDARIO ---
   const [date, setDate] = useState(new Date());
   const [dailySession, setDailySession] = useState([]);
   const [allSessionsIds, setAllSessionsIds] = useState([]);
   const [routines, setRoutines] = useState([]);
   
-  // Modal de Agregar Ejercicio/Rutina
   const [isAddingEx, setIsAddingEx] = useState(false);
-  const [addMode, setAddMode] = useState('single'); // 'single' o 'routine'
+  const [addMode, setAddMode] = useState('single');
   const [newExData, setNewExData] = useState({ name: '', sets: 4, reps: '10', weight: '', videoUrl: '' });
   const [selectedRoutineId, setSelectedRoutineId] = useState('');
 
-  // Modal de Replicar Día (Clonar)
   const [isCloneModalOpen, setIsCloneModalOpen] = useState(false);
   const [cloneDates, setCloneDates] = useState([]);
 
@@ -40,7 +36,6 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary }) {
 
   const currentDateId = formatDateId(date);
 
-  // 1. Cargar Fechas con Ejercicios (Para los puntitos del calendario)
   useEffect(() => {
     if (!client) return;
     const sessionsRef = collection(db, 'clients', client.id, 'sessions');
@@ -53,7 +48,6 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary }) {
     return () => unsubscribe();
   }, [client]);
 
-  // 2. Cargar Sesión del Día Seleccionado + LIMPIEZA AUTOMÁTICA
   useEffect(() => {
     if (!client) return;
     const sessionDocRef = doc(db, 'clients', client.id, 'sessions', currentDateId);
@@ -62,10 +56,7 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary }) {
         const data = docSnap.data();
         const exercises = data.exercises || [];
         setDailySession(exercises);
-
-        if (exercises.length === 0 && !data.missedReason) {
-          deleteDoc(sessionDocRef);
-        }
+        if (exercises.length === 0 && !data.missedReason) deleteDoc(sessionDocRef);
       } else {
         setDailySession([]);
       }
@@ -73,7 +64,6 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary }) {
     return () => unsubscribe();
   }, [date, client, currentDateId]);
 
-  // 3. Cargar las Rutinas prearmadas
   useEffect(() => {
     const unsubRoutines = onSnapshot(collection(db, 'routines'), (snapshot) => {
       setRoutines(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
@@ -81,19 +71,26 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary }) {
     return () => unsubRoutines();
   }, []);
 
-  // 4. Cargar el Chat en Tiempo Real
+  // CARGAR CHAT Y MARCAR COMO LEÍDO
   useEffect(() => {
     if (!client || activeTab !== 'chat') return;
     const q = query(collection(db, 'clients', client.id, 'messages'), orderBy('createdAt', 'asc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      setMessages(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-      // Auto-scroll al final
+      const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setMessages(msgs);
+      
+      // Marcar mensajes del alumno como leídos al abrir
+      msgs.forEach(async (m) => {
+        if (m.sender === 'student' && !m.read) {
+          await updateDoc(doc(db, 'clients', client.id, 'messages', m.id), { read: true });
+        }
+      });
+
       setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
     });
     return () => unsubscribe();
   }, [client, activeTab]);
 
-  // --- FUNCIONES DE CHAT ---
   const handleSendMessage = async (e) => {
     e.preventDefault();
     if (!newMessage.trim()) return;
@@ -101,13 +98,13 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary }) {
       await addDoc(collection(db, 'clients', client.id, 'messages'), {
         text: newMessage,
         sender: 'trainer',
-        createdAt: new Date()
+        createdAt: new Date(),
+        read: false // <--- NUEVO: Permite que el alumno sepa que tiene mensaje nuevo
       });
       setNewMessage('');
     } catch (error) { console.error(error); }
   };
 
-  // --- FUNCIONES DE AGREGAR RUTINA ---
   const handleSelectExerciseName = (e) => {
     const name = e.target.value;
     const found = exercisesLibrary.find(ex => ex.name === name);
@@ -126,25 +123,16 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary }) {
       const routine = routines.find(r => r.id === selectedRoutineId);
       if (routine && routine.exercises) {
         newExercises = routine.exercises.map(ex => ({
-           name: ex.name,
-           sets: ex.sets || 4,
-           reps: ex.reps || '10',
-           weight: ex.weight || '',
-           videoUrl: ex.videoUrl || '',
-           id: Math.random().toString(36).substr(2, 9)
+           name: ex.name, sets: ex.sets || 4, reps: ex.reps || '10', weight: ex.weight || '', videoUrl: ex.videoUrl || '', id: Math.random().toString(36).substr(2, 9)
         }));
       }
     }
 
     const updatedSession = [...dailySession, ...newExercises];
-    
     try {
       await setDoc(doc(db, 'clients', client.id, 'sessions', currentDateId), {
-        date: currentDateId,
-        exercises: updatedSession,
-        updatedAt: new Date()
+        date: currentDateId, exercises: updatedSession, updatedAt: new Date()
       }, { merge: true });
-      
       setIsAddingEx(false);
       setNewExData({ name: '', sets: 4, reps: '10', weight: '', videoUrl: '' });
       setSelectedRoutineId('');
@@ -154,52 +142,31 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary }) {
   const handleRemoveExercise = async (index) => {
     const updatedSession = dailySession.filter((_, i) => i !== index);
     const sessionDocRef = doc(db, 'clients', client.id, 'sessions', currentDateId);
-    
     try {
-      if (updatedSession.length === 0) {
-        await deleteDoc(sessionDocRef);
-      } else {
-        await updateDoc(sessionDocRef, { exercises: updatedSession });
-      }
+      if (updatedSession.length === 0) await deleteDoc(sessionDocRef);
+      else await updateDoc(sessionDocRef, { exercises: updatedSession });
     } catch (error) { console.error(error); }
   };
 
-  // --- FUNCIONES DE CLONAR DÍA ---
   const handleToggleCloneDate = (val) => {
     const dateId = formatDateId(val);
     if (dateId === currentDateId) return;
-    if (cloneDates.includes(dateId)) {
-      setCloneDates(cloneDates.filter(d => d !== dateId));
-    } else {
-      setCloneDates([...cloneDates, dateId]);
-    }
+    if (cloneDates.includes(dateId)) setCloneDates(cloneDates.filter(d => d !== dateId));
+    else setCloneDates([...cloneDates, dateId]);
   };
 
   const handleSaveClone = async () => {
     if (cloneDates.length === 0 || dailySession.length === 0) return;
-    
-    const cleanSession = dailySession.map(ex => {
-      const { actualSets, ...rest } = ex;
-      return { ...rest };
-    });
-
+    const cleanSession = dailySession.map(ex => { const { actualSets, ...rest } = ex; return { ...rest }; });
     try {
       const promises = cloneDates.map(dateId => 
-        setDoc(doc(db, 'clients', client.id, 'sessions', dateId), {
-          date: dateId,
-          exercises: cleanSession,
-          updatedAt: new Date()
-        }, { merge: true })
+        setDoc(doc(db, 'clients', client.id, 'sessions', dateId), { date: dateId, exercises: cleanSession, updatedAt: new Date() }, { merge: true })
       );
       await Promise.all(promises);
-      
       setIsCloneModalOpen(false);
       setCloneDates([]);
       alert("¡Rutina replicada con éxito!");
-    } catch (error) {
-       console.error(error);
-       alert("Error al replicar.");
-    }
+    } catch (error) { console.error(error); alert("Error al replicar."); }
   };
 
   return (
@@ -209,12 +176,8 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary }) {
       <div className="flex flex-col gap-4 mb-6">
         <div className="flex items-center justify-between bg-zinc-900 p-6 rounded-2xl border border-zinc-800">
           <div className="flex items-center gap-4">
-            <button onClick={goBack} className="p-2 bg-zinc-800 hover:bg-yellow-400 hover:text-black text-white rounded-full transition-colors">
-              <ChevronLeft size={24} />
-            </button>
-            <div className="w-14 h-14 bg-zinc-800 text-yellow-400 rounded-full flex items-center justify-center font-bold text-xl border-2 border-zinc-700">
-              {client.name.charAt(0)}
-            </div>
+            <button onClick={goBack} className="p-2 bg-zinc-800 hover:bg-yellow-400 hover:text-black text-white rounded-full transition-colors"><ChevronLeft size={24} /></button>
+            <div className="w-14 h-14 bg-zinc-800 text-yellow-400 rounded-full flex items-center justify-center font-bold text-xl border-2 border-zinc-700">{client.name.charAt(0)}</div>
             <div>
               <h2 className="text-2xl font-bold text-white uppercase tracking-tight">{client.name}</h2>
               <div className="flex items-center gap-3 text-sm text-zinc-400 mt-1">
@@ -225,74 +188,35 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary }) {
           </div>
         </div>
 
-        {/* SELECTOR DE PESTAÑAS */}
         <div className="flex gap-2">
-          <button 
-            onClick={() => setActiveTab('routine')}
-            className={`flex items-center gap-2 px-6 py-3 rounded-xl font-bold uppercase tracking-wider text-sm transition-all ${
-              activeTab === 'routine' ? 'bg-yellow-400 text-black shadow-lg' : 'bg-zinc-900 text-zinc-500 hover:text-white border border-zinc-800'
-            }`}
-          >
+          <button onClick={() => setActiveTab('routine')} className={`flex items-center gap-2 px-6 py-3 rounded-xl font-bold uppercase tracking-wider text-sm transition-all ${activeTab === 'routine' ? 'bg-yellow-400 text-black shadow-lg' : 'bg-zinc-900 text-zinc-500 hover:text-white border border-zinc-800'}`}>
             <CalendarIcon size={18}/> Entrenamientos
           </button>
-          <button 
-            onClick={() => setActiveTab('chat')}
-            className={`flex items-center gap-2 px-6 py-3 rounded-xl font-bold uppercase tracking-wider text-sm transition-all ${
-              activeTab === 'chat' ? 'bg-yellow-400 text-black shadow-lg' : 'bg-zinc-900 text-zinc-500 hover:text-white border border-zinc-800'
-            }`}
-          >
+          <button onClick={() => setActiveTab('chat')} className={`flex items-center gap-2 px-6 py-3 rounded-xl font-bold uppercase tracking-wider text-sm transition-all ${activeTab === 'chat' ? 'bg-yellow-400 text-black shadow-lg' : 'bg-zinc-900 text-zinc-500 hover:text-white border border-zinc-800'}`}>
             <MessageSquare size={18}/> Chat Directo
           </button>
         </div>
       </div>
 
-      {/* CONTENIDO PRINCIPAL DINÁMICO */}
       {activeTab === 'routine' ? (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 overflow-hidden">
-          
-          {/* CALENDARIO */}
           <div className="lg:col-span-1 overflow-y-auto pr-2 custom-scrollbar">
             <div className="bg-zinc-900 p-6 rounded-2xl border border-zinc-800 shadow-xl">
-              <h3 className="text-white font-bold uppercase mb-4 text-xs tracking-widest flex items-center gap-2">
-                <CalendarIcon size={18} className="text-yellow-400"/> Agenda del Atleta
-              </h3>
-              <Calendar 
-                onChange={setDate} 
-                value={date} 
-                className="react-calendar-custom"
-                tileClassName={({ date }) => allSessionsIds.includes(formatDateId(date)) ? 'has-workout' : null} 
-              />
+              <h3 className="text-white font-bold uppercase mb-4 text-xs tracking-widest flex items-center gap-2"><CalendarIcon size={18} className="text-yellow-400"/> Agenda del Atleta</h3>
+              <Calendar onChange={setDate} value={date} className="react-calendar-custom" tileClassName={({ date }) => allSessionsIds.includes(formatDateId(date)) ? 'has-workout' : null} />
             </div>
           </div>
 
-          {/* LISTA DE EJERCICIOS */}
           <div className="lg:col-span-2">
             <div className="bg-zinc-900 rounded-2xl border border-zinc-800 overflow-hidden flex flex-col h-full shadow-xl">
               <div className="p-6 border-b border-zinc-800 flex justify-between items-center bg-zinc-950/50 shrink-0">
                 <div>
-                  <h3 className="text-2xl font-black text-white uppercase italic tracking-tighter">
-                    {date.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })}
-                  </h3>
-                  <p className="text-zinc-500 text-sm font-medium mt-1">
-                    {dailySession.length} movimientos asignados
-                  </p>
+                  <h3 className="text-2xl font-black text-white uppercase italic tracking-tighter">{date.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })}</h3>
+                  <p className="text-zinc-500 text-sm font-medium mt-1">{dailySession.length} movimientos asignados</p>
                 </div>
-                
                 <div className="flex gap-2">
-                  {dailySession.length > 0 && (
-                    <button 
-                      onClick={() => setIsCloneModalOpen(true)}
-                      className="bg-zinc-800 hover:bg-zinc-700 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 transition-colors border border-zinc-700"
-                    >
-                      <Copy size={18}/> <span className="hidden sm:inline">Replicar</span>
-                    </button>
-                  )}
-                  <button 
-                    onClick={() => setIsAddingEx(true)}
-                    className="bg-yellow-400 hover:bg-yellow-300 text-black px-4 py-2 rounded-lg font-bold flex items-center gap-2 transition-colors shadow-lg"
-                  >
-                    <Plus size={18}/> Agregar
-                  </button>
+                  {dailySession.length > 0 && <button onClick={() => setIsCloneModalOpen(true)} className="bg-zinc-800 hover:bg-zinc-700 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 transition-colors border border-zinc-700"><Copy size={18}/> <span className="hidden sm:inline">Replicar</span></button>}
+                  <button onClick={() => setIsAddingEx(true)} className="bg-yellow-400 hover:bg-yellow-300 text-black px-4 py-2 rounded-lg font-bold flex items-center gap-2 transition-colors shadow-lg"><Plus size={18}/> Agregar</button>
                 </div>
               </div>
 
@@ -301,37 +225,23 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary }) {
                   dailySession.map((ex, idx) => (
                     <div key={idx} className="bg-black p-4 rounded-xl border border-zinc-800 flex justify-between items-center group hover:border-yellow-400/50 transition-all">
                       <div className="flex items-center gap-4">
-                        <span className="bg-zinc-900 text-zinc-500 font-bold w-10 h-10 rounded-full flex items-center justify-center border border-zinc-800 group-hover:text-yellow-400 group-hover:border-yellow-400/30 transition-colors">
-                          {idx + 1}
-                        </span>
+                        <span className="bg-zinc-900 text-zinc-500 font-bold w-10 h-10 rounded-full flex items-center justify-center border border-zinc-800 group-hover:text-yellow-400 group-hover:border-yellow-400/30 transition-colors">{idx + 1}</span>
                         <div>
-                          <div className="flex items-center gap-2">
-                            <h4 className="font-bold text-white text-lg leading-none">{ex.name}</h4>
-                            {ex.videoUrl && <Video size={16} className="text-blue-500 cursor-help" />}
-                          </div>
-                          <p className="text-zinc-500 text-sm mt-1">
-                            <span className="text-zinc-300">{ex.sets}</span> series x <span className="text-zinc-300">{ex.reps}</span> reps 
-                            {ex.weight && ` | ${ex.weight}`}
-                          </p>
+                          <div className="flex items-center gap-2"><h4 className="font-bold text-white text-lg leading-none">{ex.name}</h4>{ex.videoUrl && <Video size={16} className="text-blue-500 cursor-help" />}</div>
+                          <p className="text-zinc-500 text-sm mt-1"><span className="text-zinc-300">{ex.sets}</span> series x <span className="text-zinc-300">{ex.reps}</span> reps {ex.weight && ` | ${ex.weight}`}</p>
                         </div>
                       </div>
-                      <button onClick={() => handleRemoveExercise(idx)} className="text-zinc-600 hover:text-red-500 p-2 transition-colors">
-                        <Trash2 size={20}/>
-                      </button>
+                      <button onClick={() => handleRemoveExercise(idx)} className="text-zinc-600 hover:text-red-500 p-2 transition-colors"><Trash2 size={20}/></button>
                     </div>
                   ))
                 ) : (
-                  <div className="flex flex-col items-center justify-center h-full text-zinc-700">
-                    <Dumbbell size={64} className="mb-4 opacity-20"/>
-                    <p className="text-lg font-bold uppercase tracking-widest opacity-30">Día de Descanso</p>
-                  </div>
+                  <div className="flex flex-col items-center justify-center h-full text-zinc-700"><Dumbbell size={64} className="mb-4 opacity-20"/><p className="text-lg font-bold uppercase tracking-widest opacity-30">Día de Descanso</p></div>
                 )}
               </div>
             </div>
           </div>
         </div>
       ) : (
-        /* VISTA DE CHAT */
         <div className="bg-zinc-900 rounded-2xl border border-zinc-800 flex flex-col h-full overflow-hidden shadow-xl">
           <div className="p-4 border-b border-zinc-800 bg-zinc-950/50 flex items-center gap-3 shrink-0">
             <MessageSquare className="text-yellow-400" size={24}/>
@@ -343,27 +253,16 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary }) {
 
           <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-zinc-950/20 custom-scrollbar">
             {messages.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full text-zinc-600 opacity-50">
-                <MessageSquare size={48} className="mb-4" />
-                <p>No hay mensajes todavía.</p>
-              </div>
+              <div className="flex flex-col items-center justify-center h-full text-zinc-600 opacity-50"><MessageSquare size={48} className="mb-4" /><p>No hay mensajes todavía.</p></div>
             ) : (
               messages.map(msg => {
                 const isTrainer = msg.sender === 'trainer';
                 const isSystem = msg.sender === 'system';
                 return (
                   <div key={msg.id} className={`flex ${isTrainer ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[70%] p-4 rounded-2xl text-sm ${
-                      isTrainer 
-                        ? 'bg-yellow-400 text-black rounded-tr-none' 
-                        : isSystem 
-                          ? 'bg-red-500/20 border border-red-500/30 text-red-100 rounded-tl-none font-bold' 
-                          : 'bg-zinc-800 text-white rounded-tl-none'
-                    }`}>
+                    <div className={`max-w-[70%] p-4 rounded-2xl text-sm ${isTrainer ? 'bg-yellow-400 text-black rounded-tr-none' : isSystem ? 'bg-red-500/20 border border-red-500/30 text-red-100 rounded-tl-none font-bold' : 'bg-zinc-800 text-white rounded-tl-none'}`}>
                       {msg.text}
-                      <span className="block text-[10px] opacity-60 mt-2 text-right">
-                        {msg.createdAt?.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                      </span>
+                      <span className="block text-[10px] opacity-60 mt-2 text-right">{msg.createdAt?.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
                     </div>
                   </div>
                 );
@@ -373,45 +272,24 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary }) {
           </div>
 
           <form onSubmit={handleSendMessage} className="p-4 bg-zinc-950 border-t border-zinc-800 flex gap-3 shrink-0">
-            <input 
-              type="text" 
-              placeholder="Escribe un mensaje a tu alumno..." 
-              className="flex-1 bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3 text-white focus:border-yellow-400 outline-none transition-colors"
-              value={newMessage}
-              onChange={e => setNewMessage(e.target.value)}
-            />
-            <button 
-              type="submit" 
-              disabled={!newMessage.trim()}
-              className="bg-yellow-400 hover:bg-yellow-300 disabled:opacity-50 disabled:hover:bg-yellow-400 text-black p-3 rounded-xl transition-colors flex items-center justify-center"
-            >
-              <Send size={20}/>
-            </button>
+            <input type="text" placeholder="Escribe un mensaje a tu alumno..." className="flex-1 bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3 text-white focus:border-yellow-400 outline-none transition-colors" value={newMessage} onChange={e => setNewMessage(e.target.value)} />
+            <button type="submit" disabled={!newMessage.trim()} className="bg-yellow-400 hover:bg-yellow-300 disabled:opacity-50 disabled:hover:bg-yellow-400 text-black p-3 rounded-xl transition-colors flex items-center justify-center"><Send size={20}/></button>
           </form>
         </div>
       )}
 
-      {/* --- MODAL: AGREGAR EJERCICIO O RUTINA --- */}
       {isAddingEx && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 animate-in fade-in">
           <div className="bg-zinc-950 w-full max-w-md rounded-3xl border border-zinc-800 shadow-2xl relative overflow-hidden">
-            <div className="flex justify-between items-center p-6 border-b border-zinc-800 bg-zinc-900/50">
-              <h2 className="text-xl font-black text-white uppercase italic tracking-tighter">Asignar Entrenamiento</h2>
-              <button onClick={() => setIsAddingEx(false)} className="text-zinc-500 hover:text-white bg-zinc-800 p-2 rounded-full"><X size={20} /></button>
-            </div>
-
+            <div className="flex justify-between items-center p-6 border-b border-zinc-800 bg-zinc-900/50"><h2 className="text-xl font-black text-white uppercase italic tracking-tighter">Asignar Entrenamiento</h2><button onClick={() => setIsAddingEx(false)} className="text-zinc-500 hover:text-white bg-zinc-800 p-2 rounded-full"><X size={20} /></button></div>
             <div className="p-6">
               <div className="flex gap-2 mb-6 border-b border-zinc-800 p-1 bg-black rounded-xl">
                 <button onClick={() => setAddMode('single')} className={`flex-1 py-2 text-xs font-bold uppercase tracking-wider rounded-lg transition-all ${addMode === 'single' ? 'bg-zinc-800 text-white' : 'text-zinc-600'}`}>Individual</button>
                 <button onClick={() => setAddMode('routine')} className={`flex-1 py-2 text-xs font-bold uppercase tracking-wider rounded-lg transition-all ${addMode === 'routine' ? 'bg-zinc-800 text-white' : 'text-zinc-600'}`}>Plantilla</button>
               </div>
-
               {addMode === 'single' ? (
                 <form onSubmit={handleSaveNewItem} className="space-y-4">
-                  <select required className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white text-sm focus:border-yellow-400 outline-none" value={newExData.name} onChange={handleSelectExerciseName}>
-                    <option value="">Elegir ejercicio...</option>
-                    {exercisesLibrary.map(ex => <option key={ex.id} value={ex.name}>{ex.name}</option>)}
-                  </select>
+                  <select required className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white text-sm focus:border-yellow-400 outline-none" value={newExData.name} onChange={handleSelectExerciseName}><option value="">Elegir ejercicio...</option>{exercisesLibrary.map(ex => <option key={ex.id} value={ex.name}>{ex.name}</option>)}</select>
                   <div className="grid grid-cols-3 gap-3">
                     <input type="number" placeholder="Sets" className="bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white text-sm text-center" value={newExData.sets} onChange={e => setNewExData({...newExData, sets: e.target.value})} />
                     <input type="text" placeholder="Reps" className="bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white text-sm text-center" value={newExData.reps} onChange={e => setNewExData({...newExData, reps: e.target.value})} />
@@ -421,10 +299,7 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary }) {
                 </form>
               ) : (
                 <form onSubmit={handleSaveNewItem} className="space-y-4">
-                  <select required className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white text-sm focus:border-yellow-400 outline-none" value={selectedRoutineId} onChange={(e) => setSelectedRoutineId(e.target.value)}>
-                    <option value="">Elegir plantilla...</option>
-                    {routines.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-                  </select>
+                  <select required className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white text-sm focus:border-yellow-400 outline-none" value={selectedRoutineId} onChange={(e) => setSelectedRoutineId(e.target.value)}><option value="">Elegir plantilla...</option>{routines.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}</select>
                   <button type="submit" disabled={!selectedRoutineId} className="w-full bg-yellow-400 disabled:opacity-50 disabled:bg-zinc-800 text-black font-black py-4 rounded-xl uppercase tracking-widest mt-2 transition-colors">Volcar Plantilla</button>
                 </form>
               )}
@@ -433,25 +308,12 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary }) {
         </div>
       )}
 
-      {/* --- MODAL: REPLICAR DÍA (CLONAR) --- */}
       {isCloneModalOpen && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 animate-in fade-in">
           <div className="bg-zinc-950 w-full max-w-md rounded-3xl border border-zinc-800 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-            <div className="p-6 border-b border-zinc-800 bg-zinc-900/50 text-center">
-              <h2 className="text-xl font-black text-white uppercase italic tracking-tighter">Replicar en Calendario</h2>
-              <p className="text-zinc-400 text-xs mt-1">Selecciona los días para pegar la rutina</p>
-            </div>
+            <div className="p-6 border-b border-zinc-800 bg-zinc-900/50 text-center"><h2 className="text-xl font-black text-white uppercase italic tracking-tighter">Replicar en Calendario</h2><p className="text-zinc-400 text-xs mt-1">Selecciona los días para pegar la rutina</p></div>
             <div className="p-6 overflow-y-auto flex-1 flex flex-col items-center">
-              <Calendar 
-                onClickDay={handleToggleCloneDate}
-                className="react-calendar-custom clone-mode"
-                tileClassName={({ date }) => {
-                  const dId = formatDateId(date);
-                  if (dId === currentDateId) return 'bg-yellow-400 !text-black font-bold';
-                  if (cloneDates.includes(dId)) return 'bg-green-500 !text-black font-bold shadow-[0_0_10px_rgba(34,197,94,0.5)]';
-                  return null;
-                }}
-              />
+              <Calendar onClickDay={handleToggleCloneDate} className="react-calendar-custom clone-mode" tileClassName={({ date }) => { const dId = formatDateId(date); if (dId === currentDateId) return 'bg-yellow-400 !text-black font-bold'; if (cloneDates.includes(dId)) return 'bg-green-500 !text-black font-bold shadow-[0_0_10px_rgba(34,197,94,0.5)]'; return null; }} />
             </div>
             <div className="p-4 border-t border-zinc-800 bg-zinc-900 flex gap-3">
               <button onClick={() => { setIsCloneModalOpen(false); setCloneDates([]); }} className="flex-1 py-4 text-zinc-400 font-bold uppercase text-xs rounded-xl bg-black">Cancelar</button>
