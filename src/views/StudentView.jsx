@@ -4,7 +4,7 @@ import 'react-calendar/dist/Calendar.css';
 import { 
   Dumbbell, CheckCircle, User, Menu, X, LogOut, MessageSquare, Send, 
   AlertTriangle, Trophy, CreditCard, ExternalLink, ChevronRight, Video, 
-  Bell, Users, TrendingUp, Calendar as CalendarIcon, ChevronLeft
+  Bell, Users, TrendingUp, Calendar as CalendarIcon, ChevronLeft, Timer, Clock
 } from 'lucide-react';
 import { doc, getDoc, collection, onSnapshot, setDoc, addDoc, query, orderBy, updateDoc } from 'firebase/firestore';
 import { getAuth, signOut } from 'firebase/auth';
@@ -13,6 +13,7 @@ import CommunityView from './CommunityView';
 import ProgressChart from '../components/ProgressChart';
 
 export default function StudentView({ clientId }) {
+  // --- ESTADOS DE DATOS ---
   const [client, setClient] = useState(null);
   const [trainerSettings, setTrainerSettings] = useState({ alias: '', plans: [] });
   const [date, setDate] = useState(new Date());
@@ -21,22 +22,28 @@ export default function StudentView({ clientId }) {
   const [allSessionsIds, setAllSessionsIds] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  // --- ESTADOS DE PAGO ---
   const [hasPaidMonth, setHasPaidMonth] = useState(true); 
   const [showPaymentModal, setShowPaymentModal] = useState(false);
 
+  // --- ESTADOS DE NAVEGACIÓN ---
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  
-  // NUEVO FLUJO: currentView arranca en 'calendar'. 
-  // 'calendar' -> Muestra el mes. 'workout' -> Muestra el detalle del día.
-  const [currentView, setCurrentView] = useState('calendar'); 
+  const [currentView, setCurrentView] = useState('calendar'); // 'calendar' es la vista principal
 
+  // --- CHAT Y NOTIFICACIONES ---
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [unreadCount, setUnreadCount] = useState(0);
   const messagesEndRef = useRef(null);
 
+  // --- CONTROL DE INASISTENCIA ---
   const [missedWorkout, setMissedWorkout] = useState(null);
   const [missedReason, setMissedReason] = useState('');
+
+  // --- CRONÓMETRO DE DESCANSO PERSONALIZADO ---
+  const [restTime, setRestTime] = useState(90); // Valor por defecto
+  const [timerEndTime, setTimerEndTime] = useState(null);
+  const [timeLeft, setTimeLeft] = useState(0);
 
   const rirColors = ['bg-[#ffe4c4]', 'bg-[#fcd34d]', 'bg-[#fbbf24]', 'bg-[#f97316]', 'bg-[#ef4444]', 'bg-[#b91c1c]'];
 
@@ -52,25 +59,38 @@ export default function StudentView({ clientId }) {
   const currentDateId = formatDateId(date);
   const currentMonthId = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
 
+  // 1. Cargar Datos, Estado de Pago y Preferencia de Descanso
   useEffect(() => {
     const fetchData = async () => {
       try {
         const docRef = doc(db, 'clients', clientId);
         const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) setClient({ id: docSnap.id, ...docSnap.data() });
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          setClient({ id: docSnap.id, ...data });
+          if (data.preferredRestTime) {
+            setRestTime(data.preferredRestTime);
+          }
+        }
 
         const settingsSnap = await getDoc(doc(db, 'settings', 'general'));
-        if (settingsSnap.exists()) setTrainerSettings(settingsSnap.data());
+        if (settingsSnap.exists()) {
+          setTrainerSettings(settingsSnap.data());
+        }
 
         const paymentRef = doc(db, 'clients', clientId, 'payments', currentMonthId);
         const paymentSnap = await getDoc(paymentRef);
         setHasPaidMonth(paymentSnap.exists() && paymentSnap.data().status === 'paid');
-      } catch (e) { console.error(e); } finally { setLoading(false); }
+      } catch (e) { 
+        console.error(e); 
+      } finally { 
+        setLoading(false); 
+      }
     };
     if (clientId) fetchData();
   }, [clientId, currentMonthId]);
 
-  // Verificar si faltó ayer
+  // 2. Verificar si faltó ayer (Inasistencia)
   useEffect(() => {
     if (!client) return;
     const checkYesterday = async () => {
@@ -90,6 +110,7 @@ export default function StudentView({ clientId }) {
     checkYesterday();
   }, [client]);
 
+  // 3. Escuchar Sesiones y Rutina en tiempo real
   useEffect(() => {
     if (!client) return;
     const unsubSessions = onSnapshot(collection(db, 'clients', client.id, 'sessions'), (snapshot) => {
@@ -110,6 +131,7 @@ export default function StudentView({ clientId }) {
     return () => { unsubSessions(); unsubDaily(); };
   }, [date, client, currentDateId]);
 
+  // 4. Cargar Chat y Notificaciones
   useEffect(() => {
     if (!client) return;
     const q = query(collection(db, 'clients', client.id, 'messages'), orderBy('createdAt', 'asc'));
@@ -122,6 +144,7 @@ export default function StudentView({ clientId }) {
     return () => unsubscribe();
   }, [client]);
 
+  // 5. Marcar mensajes como leídos al abrir el chat
   useEffect(() => {
     if (currentView === 'chat' && unreadCount > 0 && client) {
       messages.forEach(async (msg) => {
@@ -132,28 +155,58 @@ export default function StudentView({ clientId }) {
     }
   }, [currentView, messages, unreadCount, client]);
 
-  // --- ACCIONES ---
-
-  const submitMissedWorkout = async (e) => {
-    e.preventDefault();
-    if (!missedWorkout || !missedReason.trim()) return;
-
+  // --- LÓGICA DEL CRONÓMETRO DE DESCANSO ---
+  const playTimerSound = () => {
+    if ('vibrate' in navigator) navigator.vibrate([200, 100, 200]);
     try {
-      await updateDoc(doc(db, 'clients', client.id, 'sessions', missedWorkout.id), {
-        missedReason: missedReason
-      });
-      await addDoc(collection(db, 'trainerNotifications'), {
-        type: 'missed_workout', clientId: client.id, clientName: client.name, date: missedWorkout.id, reason: missedReason, read: false, createdAt: new Date()
-      });
-      await addDoc(collection(db, 'clients', client.id, 'messages'), {
-        text: `Sistema: No pude entrenar ayer (${missedWorkout.date.toLocaleDateString()}). Motivo: ${missedReason}`, sender: 'system', createdAt: new Date(), read: false
-      });
-      setMissedWorkout(null);
-      setMissedReason('');
-    } catch (error) { console.error(error); }
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(800, ctx.currentTime);
+      osc.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.4);
+    } catch(e) {}
   };
 
-  // NUEVO FLUJO: Al tocar una fecha, te lleva a la vista de detalle ('workout')
+  const startTimer = (seconds) => {
+    const endTimestamp = Date.now() + seconds * 1000;
+    setTimerEndTime(endTimestamp);
+    setTimeLeft(seconds);
+  };
+
+  useEffect(() => {
+    if (!timerEndTime) return;
+
+    const interval = setInterval(() => {
+      const current = Date.now();
+      const remaining = Math.round((timerEndTime - current) / 1000);
+
+      if (remaining <= 0) {
+        clearInterval(interval);
+        setTimerEndTime(null);
+        setTimeLeft(0);
+        playTimerSound();
+      } else {
+        setTimeLeft(remaining);
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [timerEndTime]);
+
+  // --- ACCIONES ---
+
+  const updatePreferredRest = async (val) => {
+    const newRest = parseInt(val) || 0;
+    setRestTime(newRest);
+    try {
+      await updateDoc(doc(db, 'clients', clientId), { preferredRestTime: newRest });
+    } catch (e) { 
+      console.error(e); 
+    }
+  };
+
   const handleDateChange = (newDate) => {
     if (!hasPaidMonth) {
       setShowPaymentModal(true);
@@ -163,71 +216,157 @@ export default function StudentView({ clientId }) {
     }
   };
 
-  const handleGoToPay = () => { window.open(`https://www.mercadopago.com.ar/`, '_blank'); };
+  const submitMissedWorkout = async (e) => {
+    e.preventDefault();
+    if (!missedWorkout || !missedReason.trim()) return;
+
+    try {
+      await updateDoc(doc(db, 'clients', client.id, 'sessions', missedWorkout.id), { 
+        missedReason: missedReason 
+      });
+      await addDoc(collection(db, 'trainerNotifications'), {
+        type: 'missed_workout', 
+        clientId: client.id, 
+        clientName: client.name, 
+        date: missedWorkout.id, 
+        reason: missedReason, 
+        read: false, 
+        createdAt: new Date()
+      });
+      await addDoc(collection(db, 'clients', client.id, 'messages'), {
+        text: `Sistema: No pude entrenar ayer (${missedWorkout.date.toLocaleDateString()}). Motivo: ${missedReason}`, 
+        sender: 'system', 
+        createdAt: new Date(), 
+        read: false
+      });
+      setMissedWorkout(null);
+      setMissedReason('');
+    } catch (error) { 
+      console.error(error); 
+    }
+  };
+
+  const handleGoToPay = () => { 
+    window.open(`https://www.mercadopago.com.ar/`, '_blank'); 
+  };
 
   const handleUpdateSet = async (exerciseIndex, setIndex, field, value) => {
     if (isSessionFinalized || !hasPaidMonth) return;
     const updatedSession = [...dailySession];
     const exercise = updatedSession[exerciseIndex];
+    
     if (!exercise.actualSets) exercise.actualSets = [];
     if (!exercise.actualSets[setIndex]) exercise.actualSets[setIndex] = { reps: '', weight: '', completed: false };
+    
     exercise.actualSets[setIndex][field] = value;
-    await setDoc(doc(db, 'clients', clientId, 'sessions', currentDateId), { date: currentDateId, exercises: updatedSession }, { merge: true });
+    
+    try {
+      await setDoc(doc(db, 'clients', clientId, 'sessions', currentDateId), { 
+        date: currentDateId, exercises: updatedSession 
+      }, { merge: true });
+    } catch (error) {
+      console.error(error);
+    }
   };
 
   const toggleSetComplete = (exerciseIndex, setIndex) => {
     if (isSessionFinalized || !hasPaidMonth) return;
     const currentStatus = dailySession[exerciseIndex].actualSets?.[setIndex]?.completed || false;
     handleUpdateSet(exerciseIndex, setIndex, 'completed', !currentStatus);
+    
+    if (!currentStatus && restTime > 0) {
+      startTimer(restTime);
+    }
   };
 
   const handleFinishWorkout = async () => {
     if (!window.confirm('¿Confirmas que has terminado el entrenamiento de hoy y compartir en el Salón?')) return;
     try {
-      await updateDoc(doc(db, 'clients', clientId, 'sessions', currentDateId), { isFinalized: true, completedAt: new Date() });
+      await updateDoc(doc(db, 'clients', clientId, 'sessions', currentDateId), { 
+        isFinalized: true, completedAt: new Date() 
+      });
       await addDoc(collection(db, 'trainerNotifications'), {
-        type: 'workout_completed', clientId, clientName: client.name, date: currentDateId, read: false, createdAt: new Date(), performance: "Entrenamiento completado por el alumno"
+        type: 'workout_completed', 
+        clientId: client.name, 
+        clientName: client.name, 
+        date: currentDateId, 
+        read: false, 
+        createdAt: new Date(), 
+        performance: "Entrenamiento completado por el alumno"
       });
       await addDoc(collection(db, 'communityFeed'), {
-        type: 'workout_completed', userId: clientId, userName: client.name, workoutName: date.toLocaleDateString('es-ES', { weekday: 'long' }), createdAt: new Date(), reactions: { fire: [], power: [] }
+        type: 'workout_completed', 
+        userId: clientId, 
+        userName: client.name, 
+        workoutName: date.toLocaleDateString('es-ES', { weekday: 'long' }), 
+        createdAt: new Date(), 
+        reactions: { fire: [], power: [] }
       });
       setIsSessionFinalized(true);
+      setTimerEndTime(null);
       setCurrentView('community');
-    } catch (error) { console.error(error); }
+    } catch (error) { 
+      console.error(error); 
+    }
   };
 
   const handleSendMessage = async (e) => {
     e.preventDefault();
     if (!newMessage.trim()) return;
-    await addDoc(collection(db, 'clients', client.id, 'messages'), { text: newMessage, sender: 'student', createdAt: new Date(), read: false });
-    setNewMessage('');
+    try {
+      await addDoc(collection(db, 'clients', client.id, 'messages'), { 
+        text: newMessage, sender: 'student', createdAt: new Date(), read: false 
+      });
+      setNewMessage('');
+    } catch (error) {
+      console.error(error);
+    }
   };
 
-  const handleLogout = async () => { await signOut(auth); window.location.reload(); };
+  const handleLogout = async () => { 
+    await signOut(auth); 
+    window.location.reload(); 
+  };
 
-  if (loading) return <div className="min-h-screen bg-black flex items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-t-2 border-yellow-400"></div></div>;
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-yellow-400"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-zinc-950 text-white font-sans flex flex-col relative overflow-x-hidden">
       
+      {/* MODAL PAGO PENDIENTE */}
       {showPaymentModal && (
         <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-md flex items-center justify-center p-6 animate-in fade-in">
           <div className="bg-zinc-900 border border-red-500/30 rounded-3xl p-8 w-full max-w-sm text-center shadow-2xl">
-            <div className="mx-auto bg-red-500/10 p-5 rounded-full w-20 h-20 flex items-center justify-center mb-6"><AlertTriangle className="w-10 h-10 text-red-500" /></div>
+            <div className="mx-auto bg-red-500/10 p-5 rounded-full w-20 h-20 flex items-center justify-center mb-6">
+              <AlertTriangle className="w-10 h-10 text-red-500" />
+            </div>
             <h2 className="text-3xl font-black text-white uppercase italic tracking-tighter mb-2">Deuda del Mes</h2>
-            <p className="text-zinc-400 text-sm mb-8 leading-relaxed">Tu acceso está limitado. Para ver rutinas, regulariza el pago de <span className="text-white font-bold">{date.toLocaleString('es-ES', { month: 'long' })}</span>.</p>
+            <p className="text-zinc-400 text-sm mb-8 leading-relaxed">
+              Tu acceso está limitado. Para ver rutinas, regulariza el pago de <span className="text-white font-bold">{date.toLocaleString('es-ES', { month: 'long' })}</span>.
+            </p>
             <div className="bg-black/50 rounded-2xl p-5 mb-8 border border-zinc-800 text-left">
               <p className="text-[10px] text-zinc-500 uppercase font-black mb-1 tracking-widest">Alias Mercado Pago:</p>
               <p className="text-lg font-mono font-bold text-yellow-400 break-all select-all">{trainerSettings.alias || 'COACH_SIN_ALIAS'}</p>
             </div>
             <div className="space-y-3">
-              <button onClick={handleGoToPay} className="w-full bg-yellow-400 text-black font-black py-4 rounded-xl uppercase tracking-widest flex items-center justify-center gap-2">Ir a Pagar <ExternalLink size={18}/></button>
-              <button onClick={() => setShowPaymentModal(false)} className="w-full text-zinc-500 font-bold text-xs uppercase tracking-widest py-2">Cerrar</button>
+              <button onClick={handleGoToPay} className="w-full bg-yellow-400 text-black font-black py-4 rounded-xl uppercase tracking-widest flex items-center justify-center gap-2">
+                Ir a Pagar <ExternalLink size={18}/>
+              </button>
+              <button onClick={() => setShowPaymentModal(false)} className="w-full text-zinc-500 font-bold text-xs uppercase tracking-widest py-2">
+                Cerrar
+              </button>
             </div>
           </div>
         </div>
       )}
 
+      {/* MODAL FALTA INJUSTIFICADA */}
       {missedWorkout && (
         <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-md flex items-center justify-center p-6 animate-in fade-in">
           <div className="bg-zinc-900 border border-red-500/30 rounded-3xl p-8 w-full max-w-md text-center shadow-2xl">
@@ -254,45 +393,75 @@ export default function StudentView({ clientId }) {
         </div>
       )}
 
+      {/* MENÚ LATERAL MÓVIL */}
       {isMenuOpen && (
         <div className="fixed inset-0 z-50 bg-black/95 flex flex-col p-6 animate-in slide-in-from-right">
-          <div className="flex justify-end mb-10"><button onClick={() => setIsMenuOpen(false)} className="p-2 bg-zinc-900 rounded-full"><X size={32}/></button></div>
+          <div className="flex justify-end mb-10">
+            <button onClick={() => setIsMenuOpen(false)} className="p-2 bg-zinc-900 rounded-full">
+              <X size={32}/>
+            </button>
+          </div>
           <div className="flex flex-col gap-6 text-2xl font-black uppercase italic">
-            <button onClick={() => { setCurrentView('calendar'); setIsMenuOpen(false); }} className={`text-left ${['calendar', 'workout'].includes(currentView) ? 'text-yellow-400' : 'text-zinc-600'}`}>Mi Agenda</button>
-            <button onClick={() => { setCurrentView('stats'); setIsMenuOpen(false); }} className={`text-left ${currentView === 'stats' ? 'text-yellow-400' : 'text-zinc-600'}`}>Mi Estadística</button>
-            <button onClick={() => { setCurrentView('community'); setIsMenuOpen(false); }} className={`text-left ${currentView === 'community' ? 'text-yellow-400' : 'text-zinc-600'}`}>Salón Ragnar</button>
-            <button onClick={() => { setCurrentView('chat'); setIsMenuOpen(false); }} className={`text-left flex items-center gap-4 ${currentView === 'chat' ? 'text-yellow-400' : 'text-zinc-600'}`}>Chat {unreadCount > 0 && <span className="bg-red-500 text-white text-xs px-2 py-1 rounded-full not-italic font-sans">{unreadCount}</span>}</button>
-            <button onClick={() => { setCurrentView('profile'); setIsMenuOpen(false); }} className={`text-left ${currentView === 'profile' ? 'text-yellow-400' : 'text-zinc-600'}`}>Mi Perfil & Pago</button>
+            <button onClick={() => { setCurrentView('calendar'); setIsMenuOpen(false); }} className={`text-left ${['calendar', 'workout'].includes(currentView) ? 'text-yellow-400' : 'text-zinc-600'}`}>
+              Mi Agenda
+            </button>
+            <button onClick={() => { setCurrentView('stats'); setIsMenuOpen(false); }} className={`text-left ${currentView === 'stats' ? 'text-yellow-400' : 'text-zinc-600'}`}>
+              Mi Estadística
+            </button>
+            <button onClick={() => { setCurrentView('community'); setIsMenuOpen(false); }} className={`text-left ${currentView === 'community' ? 'text-yellow-400' : 'text-zinc-600'}`}>
+              Salón Ragnar
+            </button>
+            <button onClick={() => { setCurrentView('chat'); setIsMenuOpen(false); }} className={`text-left flex items-center gap-4 ${currentView === 'chat' ? 'text-yellow-400' : 'text-zinc-600'}`}>
+              Chat {unreadCount > 0 && <span className="bg-red-500 text-white text-xs px-2 py-1 rounded-full not-italic font-sans">{unreadCount}</span>}
+            </button>
+            <button onClick={() => { setCurrentView('profile'); setIsMenuOpen(false); }} className={`text-left ${currentView === 'profile' ? 'text-yellow-400' : 'text-zinc-600'}`}>
+              Mi Perfil & Pago
+            </button>
             <div className="h-px bg-zinc-800 my-4"></div>
-            <button onClick={handleLogout} className="text-left text-red-500 flex items-center gap-3"><LogOut/> Salir</button>
+            <button onClick={handleLogout} className="text-left text-red-500 flex items-center gap-3">
+              <LogOut/> Salir
+            </button>
           </div>
         </div>
       )}
 
+      {/* HEADER PRINCIPAL */}
       <div className="bg-yellow-400 text-black p-4 pb-10 rounded-b-[3rem] shadow-xl relative z-10">
          <div className="flex justify-between items-center max-w-2xl mx-auto">
             <div className="flex items-center gap-4">
-               <div className="w-12 h-12 bg-black rounded-2xl flex items-center justify-center text-yellow-400 shadow-lg"><User size={24}/></div>
-               <div><h1 className="text-xl font-black uppercase leading-none tracking-tighter">{client?.name}</h1><p className="text-[10px] font-black opacity-60 uppercase tracking-widest mt-1">Atleta Ragnar</p></div>
+               <div className="w-12 h-12 bg-black rounded-2xl flex items-center justify-center text-yellow-400 shadow-lg">
+                 <User size={24}/>
+               </div>
+               <div>
+                 <h1 className="text-xl font-black uppercase leading-none tracking-tighter">{client?.name}</h1>
+                 <p className="text-[10px] font-black opacity-60 uppercase tracking-widest mt-1">Atleta Ragnar</p>
+               </div>
             </div>
+            
             <div className="flex items-center gap-2">
                <button onClick={() => setCurrentView('chat')} className="relative p-2 bg-black/5 rounded-lg text-black">
                  <Bell size={24}/>
                  {unreadCount > 0 && <span className="absolute top-1 right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-white"></span>}
                </button>
-               <button onClick={() => setIsMenuOpen(true)} className="p-2 bg-black/5 rounded-lg"><Menu size={28}/></button>
+               <button onClick={() => setIsMenuOpen(true)} className="p-2 bg-black/5 rounded-lg">
+                 <Menu size={28}/>
+               </button>
             </div>
          </div>
       </div>
 
-      <main className="flex-1 max-w-2xl mx-auto w-full px-4 -mt-6 pb-28 relative z-20">
+      <main className="flex-1 max-w-2xl mx-auto w-full px-4 -mt-6 pb-40 relative z-20">
         
         {/* --- VISTA 0: CALENDARIO (HOME) --- */}
         {currentView === 'calendar' && (
           <div className="space-y-6 animate-in fade-in">
             {!hasPaidMonth && (
               <div onClick={() => setShowPaymentModal(true)} className="bg-red-600 text-white p-4 rounded-2xl flex items-center justify-between shadow-lg shadow-red-600/20 animate-pulse cursor-pointer">
-                <div className="flex items-center gap-3"><AlertTriangle size={20}/><span className="font-black uppercase text-xs">Pago pendiente: {date.toLocaleString('es-ES', { month: 'long' })}</span></div><ChevronRight size={20}/>
+                <div className="flex items-center gap-3">
+                  <AlertTriangle size={20}/>
+                  <span className="font-black uppercase text-xs">Pago pendiente: {date.toLocaleString('es-ES', { month: 'long' })}</span>
+                </div>
+                <ChevronRight size={20}/>
               </div>
             )}
             
@@ -304,15 +473,15 @@ export default function StudentView({ clientId }) {
                  </div>
                </div>
                
-               <p className="text-zinc-400 text-sm mb-6 bg-black/40 p-4 rounded-xl border border-zinc-800">
-                 Toca un día resaltado para ver y completar tu entrenamiento.
+               <p className="text-zinc-400 text-xs mb-6 bg-black/40 p-4 rounded-xl border border-zinc-800 leading-relaxed uppercase font-bold tracking-tight">
+                 Selecciona un día resaltado para entrenar.
                </p>
 
                <Calendar 
                  onChange={handleDateChange} 
                  value={date} 
                  className="react-calendar-custom" 
-                 tileClassName={({ date: tileDate }) => allSessionsIds.includes(formatDateId(tileDate)) ? 'has-workout' : null} 
+                 tileClassName={({ date: tDate }) => allSessionsIds.includes(formatDateId(tDate)) ? 'has-workout' : null} 
                />
             </div>
           </div>
@@ -323,21 +492,37 @@ export default function StudentView({ clientId }) {
           <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
             
             <div className="flex items-center gap-4 px-2 mb-2">
-                <button 
-                  onClick={() => setCurrentView('calendar')} 
-                  className="w-10 h-10 bg-zinc-900 border border-zinc-800 rounded-full flex items-center justify-center text-white hover:text-yellow-400 hover:border-yellow-400 transition-colors shadow-lg"
-                >
+                <button onClick={() => setCurrentView('calendar')} className="w-10 h-10 bg-zinc-900 border border-zinc-800 rounded-full flex items-center justify-center text-white shadow-lg">
                   <ChevronLeft size={24}/>
                 </button>
                 <div>
                   <h2 className="text-2xl font-black text-white uppercase italic tracking-tighter leading-none">
                     {isSessionFinalized ? 'Resumen' : 'Entrenamiento'}
                   </h2>
-                  <p className="text-yellow-400 font-bold text-xs uppercase mt-1">
+                  <p className="text-yellow-400 font-bold text-[10px] uppercase mt-1 tracking-widest">
                     {date.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })}
                   </p>
                 </div>
             </div>
+
+            {/* SELECTOR DE DESCANSO PERSONALIZADO */}
+            {!isSessionFinalized && (
+              <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-4 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Clock size={20} className="text-zinc-500" />
+                  <span className="text-[10px] font-black uppercase text-zinc-400 tracking-widest">Descanso entre series:</span>
+                </div>
+                <div className="flex items-center gap-2 bg-black px-3 py-1 rounded-xl border border-zinc-800">
+                   <input 
+                     type="number" 
+                     className="bg-transparent text-yellow-400 font-black w-10 text-center outline-none" 
+                     value={restTime} 
+                     onChange={(e) => updatePreferredRest(e.target.value)}
+                   />
+                   <span className="text-[10px] font-black text-zinc-600 uppercase">seg</span>
+                </div>
+              </div>
+            )}
 
             <div className={`space-y-4 ${!hasPaidMonth ? 'opacity-20 pointer-events-none' : ''}`}>
                 {dailySession.length > 0 ? (
@@ -401,9 +586,9 @@ export default function StudentView({ clientId }) {
                               />
                               <button 
                                 onClick={() => toggleSetComplete(exIdx, sIdx)} 
-                                className={`col-span-4 mt-1 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all ${isDone ? 'bg-green-500 text-black shadow-[0_0_10px_rgba(34,197,94,0.3)]' : 'bg-zinc-800 text-zinc-400 hover:text-white'}`}
+                                className={`col-span-4 mt-1 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all ${isDone ? 'bg-green-500 text-black shadow-lg' : 'bg-zinc-800 text-zinc-400 hover:text-white'}`}
                               >
-                                {isDone ? <><CheckCircle size={14}/> Completada</> : 'Marcar Completada'}
+                                {isDone ? <><CheckCircle size={14}/> Lista</> : 'Completar Serie'}
                               </button>
                             </div>
                           );
@@ -412,10 +597,9 @@ export default function StudentView({ clientId }) {
                     </div>
                   ))
                 ) : (
-                  <div className="text-center py-16 bg-zinc-900/30 rounded-[2rem] border border-dashed border-zinc-800 flex flex-col items-center">
+                  <div className="text-center py-20 bg-zinc-900/30 rounded-[2rem] border border-dashed border-zinc-800 flex flex-col items-center">
                     <Dumbbell className="w-12 h-12 text-zinc-800 mb-4 opacity-30"/>
-                    <p className="text-zinc-500 font-bold uppercase tracking-widest text-sm">Día de Descanso</p>
-                    <p className="text-zinc-600 text-xs mt-2 max-w-[200px]">No tienes ejercicios asignados para esta fecha.</p>
+                    <p className="text-zinc-500 font-bold uppercase tracking-widest text-sm">Sin rutina asignada</p>
                   </div>
                 )}
             </div>
@@ -423,9 +607,9 @@ export default function StudentView({ clientId }) {
             {dailySession.length > 0 && !isSessionFinalized && hasPaidMonth && (
               <button 
                 onClick={handleFinishWorkout} 
-                className="w-full bg-green-500 text-black font-black py-5 mt-6 rounded-[2rem] uppercase tracking-widest shadow-[0_0_20px_rgba(34,197,94,0.2)] active:scale-95 transition-all text-sm flex justify-center items-center gap-2"
+                className="w-full bg-green-500 text-black font-black py-5 mt-6 rounded-[2rem] uppercase tracking-widest shadow-xl flex justify-center items-center gap-2"
               >
-                <Trophy size={20}/> Finalizar Entrenamiento
+                <Trophy size={20}/> Finalizar
               </button>
             )}
           </div>
@@ -436,7 +620,7 @@ export default function StudentView({ clientId }) {
 
         {/* --- VISTA: MI ESTADÍSTICA --- */}
         {currentView === 'stats' && (
-          <div className="space-y-6 animate-in fade-in">
+          <div className="space-y-6">
             <ProgressChart clientId={client?.id} />
           </div>
         )}
@@ -444,54 +628,41 @@ export default function StudentView({ clientId }) {
         {/* --- VISTA: CHAT --- */}
         {currentView === 'chat' && (
           <div className="bg-zinc-900 rounded-[2rem] border border-zinc-800 flex flex-col h-[65vh] shadow-xl overflow-hidden animate-in fade-in">
-            <div className="p-4 border-b border-zinc-800 bg-zinc-950/50 flex items-center justify-between shrink-0">
-              <div className="flex items-center gap-3">
-                <MessageSquare className="text-yellow-400" size={24}/>
-                <h3 className="text-white font-bold uppercase tracking-widest text-sm">Chat con Coach</h3>
-              </div>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-zinc-950/20 custom-scrollbar">
-              {messages.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-full text-zinc-600 opacity-50">
-                  <MessageSquare size={48} className="mb-4" />
-                  <p>Mándale un mensaje a tu entrenador.</p>
-                </div>
-              ) : (
-                messages.map(msg => {
-                  const isStudent = msg.sender === 'student';
-                  const isSystem = msg.sender === 'system';
-                  return (
-                    <div key={msg.id} className={`flex ${isStudent ? 'justify-end' : 'justify-start'}`}>
-                      <div className={`max-w-[80%] p-4 rounded-2xl text-sm ${isStudent ? 'bg-yellow-400 text-black rounded-tr-none' : isSystem ? 'bg-red-500/10 border border-red-500/20 text-red-200 rounded-tl-none font-bold' : 'bg-zinc-800 text-white rounded-tl-none border border-zinc-700'}`}>
+             <div className="p-4 border-b border-zinc-800 bg-zinc-950/50 flex items-center gap-3 shrink-0">
+               <MessageSquare className="text-yellow-400" size={24}/>
+               <h3 className="text-white font-bold uppercase tracking-widest text-sm">Chat Coach</h3>
+             </div>
+             
+             <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-zinc-950/20">
+                {messages.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-full text-zinc-600 opacity-50">
+                    <MessageSquare size={48} className="mb-4" />
+                    <p>Di hola guerrero.</p>
+                  </div>
+                ) : (
+                  messages.map(msg => (
+                    <div key={msg.id} className={`flex ${msg.sender === 'student' ? 'justify-end' : 'justify-start'}`}>
+                      <div className={`max-w-[80%] p-4 rounded-2xl text-sm ${msg.sender === 'student' ? 'bg-yellow-400 text-black rounded-tr-none' : 'bg-zinc-800 text-white rounded-tl-none border border-zinc-700'}`}>
                         {msg.text}
-                        <span className="block text-[10px] opacity-60 mt-2 text-right">
-                          {msg.createdAt?.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                        </span>
                       </div>
                     </div>
-                  );
-                })
-              )}
-              <div ref={messagesEndRef} />
-            </div>
-
-            <form onSubmit={handleSendMessage} className="p-3 bg-zinc-950 border-t border-zinc-800 flex gap-2 shrink-0">
-              <input 
-                type="text" 
-                placeholder="Escribe aquí..." 
-                className="flex-1 bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3 text-white focus:border-yellow-400 outline-none text-sm" 
-                value={newMessage} 
-                onChange={e => setNewMessage(e.target.value)} 
-              />
-              <button 
-                type="submit" 
-                disabled={!newMessage.trim()} 
-                className="bg-yellow-400 disabled:opacity-50 text-black p-3 rounded-xl transition-colors"
-              >
-                <Send size={20}/>
-              </button>
-            </form>
+                  ))
+                )}
+                <div ref={messagesEndRef} />
+             </div>
+             
+             <form onSubmit={handleSendMessage} className="p-3 bg-zinc-950 border-t border-zinc-800 flex gap-2 shrink-0">
+               <input 
+                 type="text" 
+                 placeholder="Escribe..." 
+                 className="flex-1 bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3 text-white outline-none" 
+                 value={newMessage} 
+                 onChange={e => setNewMessage(e.target.value)} 
+               />
+               <button type="submit" className="bg-yellow-400 text-black p-3 rounded-xl">
+                 <Send size={20}/>
+               </button>
+             </form>
           </div>
         )}
 
@@ -503,12 +674,12 @@ export default function StudentView({ clientId }) {
                  <User size={48}/>
                </div>
                <h2 className="text-2xl font-black uppercase text-white">{client.name}</h2>
-               <p className="text-zinc-500 text-xs font-bold uppercase tracking-widest">{client.email}</p>
+               <p className="text-zinc-500 text-xs uppercase tracking-widest">{client.email}</p>
              </div>
              
              <div className="bg-zinc-900 rounded-[2rem] p-6 border border-zinc-800 shadow-xl">
-               <h3 className="text-white font-bold uppercase mb-6 flex items-center gap-2 tracking-tighter">
-                 <CreditCard size={20} className="text-yellow-400"/> Mi Suscripción
+               <h3 className="text-white font-bold uppercase mb-6 flex items-center gap-2">
+                 <CreditCard size={20} className="text-yellow-400"/> Suscripción
                </h3>
                
                <div className="space-y-4">
@@ -522,20 +693,9 @@ export default function StudentView({ clientId }) {
                     </span>
                   </div>
                   
-                  {!hasPaidMonth && (
-                    <div className="bg-yellow-400/5 border border-yellow-400/20 p-5 rounded-2xl">
-                      <p className="text-xs text-yellow-400/80 font-medium leading-relaxed">Para informar tu pago, realiza la transferencia al alias indicado abajo y envía el comprobante a tu entrenador por el Chat.</p>
-                    </div>
-                  )}
-                  
-                  <div className="bg-black/40 p-5 rounded-2xl border border-zinc-800">
-                    <p className="text-[10px] text-zinc-500 uppercase font-black mb-1">Datos de Transferencia:</p>
-                    <p className="font-mono font-bold text-yellow-400 text-lg select-all cursor-pointer">{trainerSettings.alias || 'SIN_ALIAS'}</p>
-                  </div>
-                  
                   <button 
-                    onClick={handleGoToPay} 
-                    className="w-full bg-yellow-400 text-black font-black py-5 rounded-2xl uppercase tracking-widest shadow-lg active:scale-95 transition-all flex justify-center items-center gap-2"
+                    onClick={() => window.open('https://www.mercadopago.com.ar/', '_blank')} 
+                    className="w-full bg-yellow-400 text-black font-black py-5 rounded-2xl uppercase tracking-widest flex justify-center items-center gap-2 shadow-lg"
                   >
                     Ir a Mercado Pago <ExternalLink size={20}/>
                   </button>
@@ -551,6 +711,37 @@ export default function StudentView({ clientId }) {
           </div>
         )}
       </main>
+
+      {/* --- CRONÓMETRO FLOTANTE --- */}
+      {timerEndTime && (
+        <div className="fixed bottom-24 left-4 right-4 bg-zinc-900 border border-yellow-400/50 rounded-2xl p-4 shadow-[0_0_30px_rgba(250,204,21,0.2)] z-[60] flex items-center justify-between animate-in slide-in-from-bottom-10">
+          <div className="flex items-center gap-4">
+            <div className="bg-yellow-400/20 p-2 rounded-full animate-pulse">
+              <Timer size={28} className="text-yellow-400" />
+            </div>
+            <div>
+              <p className="text-[10px] uppercase font-black text-zinc-400 tracking-widest">Descanso...</p>
+              <p className="text-3xl font-black text-white leading-none">
+                {Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, '0')}
+              </p>
+            </div>
+          </div>
+          <div className="flex gap-2">
+             <button 
+               onClick={() => startTimer(timeLeft + 15)} 
+               className="p-2 bg-zinc-800 text-white rounded-lg font-bold text-xs uppercase tracking-tighter"
+             >
+               +15s
+             </button>
+             <button 
+               onClick={() => setTimerEndTime(null)} 
+               className="p-2 bg-red-500/20 text-red-500 rounded-lg"
+             >
+               <X size={20}/>
+             </button>
+          </div>
+        </div>
+      )}
 
       {/* NAV BAR INFERIOR (5 Botones) */}
       <nav className="fixed bottom-0 left-0 right-0 bg-zinc-950/90 backdrop-blur-xl border-t border-zinc-800 p-3 pb-6 flex justify-between items-center z-[40]">
@@ -575,7 +766,7 @@ export default function StudentView({ clientId }) {
           className={`flex flex-col items-center justify-center gap-1.5 w-1/5 transition-colors ${currentView === 'stats' ? 'text-yellow-400' : 'text-zinc-500'}`}
         >
           <TrendingUp size={22}/>
-          <span className="text-[8px] font-black uppercase tracking-wider">Progreso</span>
+          <span className="text-[8px] font-black uppercase tracking-wider">Estadística</span>
         </button>
         
         <button 
