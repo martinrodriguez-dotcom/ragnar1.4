@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  Flame, HandMetal, Trophy, Clock, User, 
-  MessageSquare, Heart, ShieldCheck 
+  Flame, HandMetal, Clock, ShieldCheck 
 } from 'lucide-react';
 import { collection, query, orderBy, limit, onSnapshot, doc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -40,11 +39,15 @@ export default function CommunityView({ currentUserId, userName }) {
           [reactionKey]: arrayUnion(currentUserId)
         });
       }
-    } catch (e) { console.error(e); }
+    } catch (e) { console.error("Error en reacción:", e); }
   };
 
   if (loading) {
-    return <div className="flex justify-center items-center h-[60vh]"><div className="animate-spin rounded-full h-12 w-12 border-t-2 border-yellow-400"></div></div>;
+    return (
+      <div className="flex justify-center items-center h-[60vh]">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-yellow-400"></div>
+      </div>
+    );
   }
 
   return (
@@ -59,7 +62,9 @@ export default function CommunityView({ currentUserId, userName }) {
       <div className="space-y-6">
         {posts.length === 0 ? (
           <div className="text-center py-20 bg-zinc-900/30 rounded-[2rem] border border-dashed border-zinc-800">
-            <p className="text-zinc-600 font-bold uppercase tracking-widest">El salón está en silencio... <br/> ¡Sé el primero en entrenar!</p>
+            <p className="text-zinc-600 font-bold uppercase tracking-widest leading-relaxed">
+              El salón está en silencio... <br/> ¡Sé el primero en forjar tu camino!
+            </p>
           </div>
         ) : (
           posts.map(post => {
@@ -73,7 +78,7 @@ export default function CommunityView({ currentUserId, userName }) {
                 <div className="p-5 flex gap-4">
                   {/* Avatar con inicial */}
                   <div className="w-12 h-12 bg-yellow-400 rounded-2xl flex items-center justify-center text-black font-black text-xl shadow-lg shrink-0">
-                    {post.userName.charAt(0)}
+                    {post.userName?.charAt(0)}
                   </div>
                   
                   <div className="flex-1">
@@ -86,9 +91,9 @@ export default function CommunityView({ currentUserId, userName }) {
 
                     <div className="mt-2 text-zinc-300 text-sm leading-relaxed">
                       {post.type === 'workout_completed' ? (
-                        <p>Ha forjado su cuerpo hoy completando el entrenamiento de <span className="text-yellow-400 font-bold uppercase">{post.workoutName}</span>. ¡Disciplina inquebrantable!</p>
+                        <p>Ha completado su entrenamiento de <span className="text-yellow-400 font-bold uppercase">{post.workoutName}</span>. ¡Un paso más cerca de la cima!</p>
                       ) : (
-                        <p>¡Victoria! Ha superado un <span className="text-green-400 font-bold uppercase">Récord Personal</span> en su sesión de hoy. ¡La fuerza crece!</p>
+                        <p>¡Increíble! Ha superado un <span className="text-green-400 font-bold uppercase">Récord Personal</span> hoy. ¡La fuerza es intensa!</p>
                       )}
                     </div>
 
