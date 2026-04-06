@@ -1,11 +1,21 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Calendar from 'react-calendar';
 import 'react-calendar/dist/Calendar.css';
-import { ChevronLeft, Plus, Trash2, Dumbbell, User, Calendar as CalendarIcon, Video, Copy, X, Save, Layout } from 'lucide-react';
-import { collection, onSnapshot, doc, setDoc, getDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { 
+  ChevronLeft, Plus, Trash2, Dumbbell, User, Calendar as CalendarIcon, 
+  Video, Copy, X, Save, Layout, MessageSquare, Send 
+} from 'lucide-react';
+import { collection, onSnapshot, doc, setDoc, getDoc, updateDoc, deleteDoc, addDoc, query, orderBy } from 'firebase/firestore';
 import { db } from '../firebase';
 
 export default function ClientDetailView({ client, goBack, exercisesLibrary }) {
+  // --- ESTADOS DE PESTAÑAS Y CHAT ---
+  const [activeTab, setActiveTab] = useState('routine'); // 'routine' | 'chat'
+  const [messages, setMessages] = useState([]);
+  const [newMessage, setNewMessage] = useState('');
+  const messagesEndRef = useRef(null);
+
+  // --- ESTADOS DE RUTINA Y CALENDARIO ---
   const [date, setDate] = useState(new Date());
   const [dailySession, setDailySession] = useState([]);
   const [allSessionsIds, setAllSessionsIds] = useState([]);
@@ -35,7 +45,6 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary }) {
     if (!client) return;
     const sessionsRef = collection(db, 'clients', client.id, 'sessions');
     const unsubscribe = onSnapshot(sessionsRef, (snapshot) => {
-      // Solo incluimos en la lista de "puntos amarillos" los días que realmente tienen ejercicios
       const activeSessions = snapshot.docs
         .filter(doc => doc.data().exercises && doc.data().exercises.length > 0)
         .map(doc => doc.id);
@@ -54,7 +63,6 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary }) {
         const exercises = data.exercises || [];
         setDailySession(exercises);
 
-        // Lógica de limpieza: Si el documento existe pero no tiene ejercicios ni otros datos importantes, borrarlo.
         if (exercises.length === 0 && !data.missedReason) {
           deleteDoc(sessionDocRef);
         }
@@ -73,8 +81,33 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary }) {
     return () => unsubRoutines();
   }, []);
 
-  // --- FUNCIONES DE AGREGAR ---
+  // 4. Cargar el Chat en Tiempo Real
+  useEffect(() => {
+    if (!client || activeTab !== 'chat') return;
+    const q = query(collection(db, 'clients', client.id, 'messages'), orderBy('createdAt', 'asc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setMessages(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      // Auto-scroll al final
+      setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+    });
+    return () => unsubscribe();
+  }, [client, activeTab]);
 
+  // --- FUNCIONES DE CHAT ---
+  const handleSendMessage = async (e) => {
+    e.preventDefault();
+    if (!newMessage.trim()) return;
+    try {
+      await addDoc(collection(db, 'clients', client.id, 'messages'), {
+        text: newMessage,
+        sender: 'trainer',
+        createdAt: new Date()
+      });
+      setNewMessage('');
+    } catch (error) { console.error(error); }
+  };
+
+  // --- FUNCIONES DE AGREGAR RUTINA ---
   const handleSelectExerciseName = (e) => {
     const name = e.target.value;
     const found = exercisesLibrary.find(ex => ex.name === name);
@@ -124,18 +157,14 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary }) {
     
     try {
       if (updatedSession.length === 0) {
-        // Si borramos el último, eliminamos el documento físico de la base de datos
         await deleteDoc(sessionDocRef);
       } else {
-        await updateDoc(sessionDocRef, {
-          exercises: updatedSession
-        });
+        await updateDoc(sessionDocRef, { exercises: updatedSession });
       }
     } catch (error) { console.error(error); }
   };
 
   // --- FUNCIONES DE CLONAR DÍA ---
-
   const handleToggleCloneDate = (val) => {
     const dateId = formatDateId(val);
     if (dateId === currentDateId) return;
@@ -174,145 +203,229 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary }) {
   };
 
   return (
-    <div className="max-w-6xl mx-auto animate-in fade-in pb-10">
+    <div className="max-w-6xl mx-auto animate-in fade-in pb-10 flex flex-col h-[calc(100vh-80px)]">
       
-      {/* HEADER CLIENTE */}
-      <div className="flex items-center justify-between mb-6 bg-zinc-900 p-6 rounded-2xl border border-zinc-800">
-        <div className="flex items-center gap-4">
-          <button onClick={goBack} className="p-2 bg-zinc-800 hover:bg-yellow-400 hover:text-black text-white rounded-full transition-colors">
-            <ChevronLeft size={24} />
+      {/* HEADER CLIENTE Y PESTAÑAS */}
+      <div className="flex flex-col gap-4 mb-6">
+        <div className="flex items-center justify-between bg-zinc-900 p-6 rounded-2xl border border-zinc-800">
+          <div className="flex items-center gap-4">
+            <button onClick={goBack} className="p-2 bg-zinc-800 hover:bg-yellow-400 hover:text-black text-white rounded-full transition-colors">
+              <ChevronLeft size={24} />
+            </button>
+            <div className="w-14 h-14 bg-zinc-800 text-yellow-400 rounded-full flex items-center justify-center font-bold text-xl border-2 border-zinc-700">
+              {client.name.charAt(0)}
+            </div>
+            <div>
+              <h2 className="text-2xl font-bold text-white uppercase tracking-tight">{client.name}</h2>
+              <div className="flex items-center gap-3 text-sm text-zinc-400 mt-1">
+                <span className="flex items-center gap-1 font-bold"><Dumbbell size={14} className="text-yellow-400"/> {client.plan}</span>
+                <span className="flex items-center gap-1"><CalendarIcon size={14}/> {client.startDate || '-'}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* SELECTOR DE PESTAÑAS */}
+        <div className="flex gap-2">
+          <button 
+            onClick={() => setActiveTab('routine')}
+            className={`flex items-center gap-2 px-6 py-3 rounded-xl font-bold uppercase tracking-wider text-sm transition-all ${
+              activeTab === 'routine' ? 'bg-yellow-400 text-black shadow-lg' : 'bg-zinc-900 text-zinc-500 hover:text-white border border-zinc-800'
+            }`}
+          >
+            <CalendarIcon size={18}/> Entrenamientos
           </button>
-          <div className="w-14 h-14 bg-zinc-800 text-yellow-400 rounded-full flex items-center justify-center font-bold text-xl border-2 border-zinc-700">
-            {client.name.charAt(0)}
-          </div>
-          <div>
-            <h2 className="text-2xl font-bold text-white uppercase tracking-tight">{client.name}</h2>
-            <div className="flex items-center gap-3 text-sm text-zinc-400 mt-1">
-              <span className="flex items-center gap-1 font-bold"><Dumbbell size={14} className="text-yellow-400"/> {client.plan}</span>
-              <span className="flex items-center gap-1"><CalendarIcon size={14}/> {client.startDate || '-'}</span>
-            </div>
-          </div>
+          <button 
+            onClick={() => setActiveTab('chat')}
+            className={`flex items-center gap-2 px-6 py-3 rounded-xl font-bold uppercase tracking-wider text-sm transition-all ${
+              activeTab === 'chat' ? 'bg-yellow-400 text-black shadow-lg' : 'bg-zinc-900 text-zinc-500 hover:text-white border border-zinc-800'
+            }`}
+          >
+            <MessageSquare size={18}/> Chat Directo
+          </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
-        {/* CALENDARIO */}
-        <div className="lg:col-span-1">
-          <div className="bg-zinc-900 p-6 rounded-2xl border border-zinc-800 shadow-xl sticky top-6">
-            <h3 className="text-white font-bold uppercase mb-4 text-xs tracking-widest flex items-center gap-2">
-              <CalendarIcon size={18} className="text-yellow-400"/> Agenda del Atleta
-            </h3>
-            <Calendar 
-              onChange={setDate} 
-              value={date} 
-              className="react-calendar-custom"
-              tileClassName={({ date }) => allSessionsIds.includes(formatDateId(date)) ? 'has-workout' : null} 
-            />
-          </div>
-        </div>
-
-        {/* LISTA DE EJERCICIOS */}
-        <div className="lg:col-span-2">
-          <div className="bg-zinc-900 rounded-2xl border border-zinc-800 overflow-hidden flex flex-col min-h-[500px] shadow-xl">
-            
-            <div className="p-6 border-b border-zinc-800 flex justify-between items-center bg-zinc-950/50">
-              <div>
-                <h3 className="text-2xl font-black text-white uppercase italic tracking-tighter">
-                  {date.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })}
-                </h3>
-                <p className="text-zinc-500 text-sm font-medium mt-1">
-                  {dailySession.length} movimientos asignados
-                </p>
-              </div>
-              
-              <div className="flex gap-2">
-                {dailySession.length > 0 && (
-                  <button 
-                    onClick={() => setIsCloneModalOpen(true)}
-                    className="bg-zinc-800 hover:bg-zinc-700 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 transition-colors border border-zinc-700"
-                  >
-                    <Copy size={18}/> <span className="hidden sm:inline">Replicar</span>
-                  </button>
-                )}
-                <button 
-                  onClick={() => setIsAddingEx(true)}
-                  className="bg-yellow-400 hover:bg-yellow-300 text-black px-4 py-2 rounded-lg font-bold flex items-center gap-2 transition-colors shadow-lg"
-                >
-                  <Plus size={18}/> Agregar
-                </button>
-              </div>
+      {/* CONTENIDO PRINCIPAL DINÁMICO */}
+      {activeTab === 'routine' ? (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 overflow-hidden">
+          
+          {/* CALENDARIO */}
+          <div className="lg:col-span-1 overflow-y-auto pr-2 custom-scrollbar">
+            <div className="bg-zinc-900 p-6 rounded-2xl border border-zinc-800 shadow-xl">
+              <h3 className="text-white font-bold uppercase mb-4 text-xs tracking-widest flex items-center gap-2">
+                <CalendarIcon size={18} className="text-yellow-400"/> Agenda del Atleta
+              </h3>
+              <Calendar 
+                onChange={setDate} 
+                value={date} 
+                className="react-calendar-custom"
+                tileClassName={({ date }) => allSessionsIds.includes(formatDateId(date)) ? 'has-workout' : null} 
+              />
             </div>
+          </div>
 
-            <div className="flex-1 overflow-y-auto p-6 space-y-3 bg-zinc-950/20">
-              {dailySession.length > 0 ? (
-                dailySession.map((ex, idx) => (
-                  <div key={idx} className="bg-black p-4 rounded-xl border border-zinc-800 flex justify-between items-center group hover:border-yellow-400/50 transition-all">
-                    <div className="flex items-center gap-4">
-                      <span className="bg-zinc-900 text-zinc-500 font-bold w-10 h-10 rounded-full flex items-center justify-center border border-zinc-800 group-hover:text-yellow-400 group-hover:border-yellow-400/30 transition-colors">
-                        {idx + 1}
-                      </span>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h4 className="font-bold text-white text-lg leading-none">{ex.name}</h4>
-                          {ex.videoUrl && <Video size={16} className="text-blue-500 cursor-help" />}
-                        </div>
-                        <p className="text-zinc-500 text-sm mt-1">
-                          <span className="text-zinc-300">{ex.sets}</span> series x <span className="text-zinc-300">{ex.reps}</span> reps 
-                          {ex.weight && ` | ${ex.weight}`}
-                        </p>
-                      </div>
-                    </div>
-                    <button onClick={() => handleRemoveExercise(idx)} className="text-zinc-600 hover:text-red-500 p-2 transition-colors">
-                      <Trash2 size={20}/>
-                    </button>
-                  </div>
-                ))
-              ) : (
-                <div className="flex flex-col items-center justify-center h-full py-20 text-zinc-700">
-                  <Dumbbell size={64} className="mb-4 opacity-20"/>
-                  <p className="text-lg font-bold uppercase tracking-widest opacity-30">Día de Descanso</p>
+          {/* LISTA DE EJERCICIOS */}
+          <div className="lg:col-span-2">
+            <div className="bg-zinc-900 rounded-2xl border border-zinc-800 overflow-hidden flex flex-col h-full shadow-xl">
+              <div className="p-6 border-b border-zinc-800 flex justify-between items-center bg-zinc-950/50 shrink-0">
+                <div>
+                  <h3 className="text-2xl font-black text-white uppercase italic tracking-tighter">
+                    {date.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })}
+                  </h3>
+                  <p className="text-zinc-500 text-sm font-medium mt-1">
+                    {dailySession.length} movimientos asignados
+                  </p>
                 </div>
-              )}
+                
+                <div className="flex gap-2">
+                  {dailySession.length > 0 && (
+                    <button 
+                      onClick={() => setIsCloneModalOpen(true)}
+                      className="bg-zinc-800 hover:bg-zinc-700 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 transition-colors border border-zinc-700"
+                    >
+                      <Copy size={18}/> <span className="hidden sm:inline">Replicar</span>
+                    </button>
+                  )}
+                  <button 
+                    onClick={() => setIsAddingEx(true)}
+                    className="bg-yellow-400 hover:bg-yellow-300 text-black px-4 py-2 rounded-lg font-bold flex items-center gap-2 transition-colors shadow-lg"
+                  >
+                    <Plus size={18}/> Agregar
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-6 space-y-3 bg-zinc-950/20 custom-scrollbar">
+                {dailySession.length > 0 ? (
+                  dailySession.map((ex, idx) => (
+                    <div key={idx} className="bg-black p-4 rounded-xl border border-zinc-800 flex justify-between items-center group hover:border-yellow-400/50 transition-all">
+                      <div className="flex items-center gap-4">
+                        <span className="bg-zinc-900 text-zinc-500 font-bold w-10 h-10 rounded-full flex items-center justify-center border border-zinc-800 group-hover:text-yellow-400 group-hover:border-yellow-400/30 transition-colors">
+                          {idx + 1}
+                        </span>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h4 className="font-bold text-white text-lg leading-none">{ex.name}</h4>
+                            {ex.videoUrl && <Video size={16} className="text-blue-500 cursor-help" />}
+                          </div>
+                          <p className="text-zinc-500 text-sm mt-1">
+                            <span className="text-zinc-300">{ex.sets}</span> series x <span className="text-zinc-300">{ex.reps}</span> reps 
+                            {ex.weight && ` | ${ex.weight}`}
+                          </p>
+                        </div>
+                      </div>
+                      <button onClick={() => handleRemoveExercise(idx)} className="text-zinc-600 hover:text-red-500 p-2 transition-colors">
+                        <Trash2 size={20}/>
+                      </button>
+                    </div>
+                  ))
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-full text-zinc-700">
+                    <Dumbbell size={64} className="mb-4 opacity-20"/>
+                    <p className="text-lg font-bold uppercase tracking-widest opacity-30">Día de Descanso</p>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
-      </div>
-
-      {/* MODAL AGREGAR */}
-      {isAddingEx && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm p-4">
-          <div className="bg-zinc-950 w-full max-w-md rounded-2xl border border-zinc-800 shadow-2xl">
-            <div className="flex justify-between items-center p-6 border-b border-zinc-800">
-              <h2 className="text-xl font-bold text-white uppercase">Asignar Entrenamiento</h2>
-              <button onClick={() => setIsAddingEx(false)} className="text-zinc-500 hover:text-white"><X size={24} /></button>
+      ) : (
+        /* VISTA DE CHAT */
+        <div className="bg-zinc-900 rounded-2xl border border-zinc-800 flex flex-col h-full overflow-hidden shadow-xl">
+          <div className="p-4 border-b border-zinc-800 bg-zinc-950/50 flex items-center gap-3 shrink-0">
+            <MessageSquare className="text-yellow-400" size={24}/>
+            <div>
+              <h3 className="text-white font-bold uppercase tracking-widest">Conversación con {client.name}</h3>
+              <p className="text-zinc-500 text-xs">Los mensajes de sistema y excusas también aparecerán aquí.</p>
             </div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-zinc-950/20 custom-scrollbar">
+            {messages.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full text-zinc-600 opacity-50">
+                <MessageSquare size={48} className="mb-4" />
+                <p>No hay mensajes todavía.</p>
+              </div>
+            ) : (
+              messages.map(msg => {
+                const isTrainer = msg.sender === 'trainer';
+                const isSystem = msg.sender === 'system';
+                return (
+                  <div key={msg.id} className={`flex ${isTrainer ? 'justify-end' : 'justify-start'}`}>
+                    <div className={`max-w-[70%] p-4 rounded-2xl text-sm ${
+                      isTrainer 
+                        ? 'bg-yellow-400 text-black rounded-tr-none' 
+                        : isSystem 
+                          ? 'bg-red-500/20 border border-red-500/30 text-red-100 rounded-tl-none font-bold' 
+                          : 'bg-zinc-800 text-white rounded-tl-none'
+                    }`}>
+                      {msg.text}
+                      <span className="block text-[10px] opacity-60 mt-2 text-right">
+                        {msg.createdAt?.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+            <div ref={messagesEndRef} />
+          </div>
+
+          <form onSubmit={handleSendMessage} className="p-4 bg-zinc-950 border-t border-zinc-800 flex gap-3 shrink-0">
+            <input 
+              type="text" 
+              placeholder="Escribe un mensaje a tu alumno..." 
+              className="flex-1 bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3 text-white focus:border-yellow-400 outline-none transition-colors"
+              value={newMessage}
+              onChange={e => setNewMessage(e.target.value)}
+            />
+            <button 
+              type="submit" 
+              disabled={!newMessage.trim()}
+              className="bg-yellow-400 hover:bg-yellow-300 disabled:opacity-50 disabled:hover:bg-yellow-400 text-black p-3 rounded-xl transition-colors flex items-center justify-center"
+            >
+              <Send size={20}/>
+            </button>
+          </form>
+        </div>
+      )}
+
+      {/* --- MODAL: AGREGAR EJERCICIO O RUTINA --- */}
+      {isAddingEx && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 animate-in fade-in">
+          <div className="bg-zinc-950 w-full max-w-md rounded-3xl border border-zinc-800 shadow-2xl relative overflow-hidden">
+            <div className="flex justify-between items-center p-6 border-b border-zinc-800 bg-zinc-900/50">
+              <h2 className="text-xl font-black text-white uppercase italic tracking-tighter">Asignar Entrenamiento</h2>
+              <button onClick={() => setIsAddingEx(false)} className="text-zinc-500 hover:text-white bg-zinc-800 p-2 rounded-full"><X size={20} /></button>
+            </div>
+
             <div className="p-6">
-              <div className="flex gap-4 mb-6 border-b border-zinc-800">
-                <button onClick={() => setAddMode('single')} className={`pb-2 text-sm font-bold uppercase tracking-wider ${addMode === 'single' ? 'text-yellow-400 border-b-2 border-yellow-400' : 'text-zinc-600'}`}>Individual</button>
-                <button onClick={() => setAddMode('routine')} className={`pb-2 text-sm font-bold uppercase tracking-wider ${addMode === 'routine' ? 'text-yellow-400 border-b-2 border-yellow-400' : 'text-zinc-600'}`}>Plantilla</button>
+              <div className="flex gap-2 mb-6 border-b border-zinc-800 p-1 bg-black rounded-xl">
+                <button onClick={() => setAddMode('single')} className={`flex-1 py-2 text-xs font-bold uppercase tracking-wider rounded-lg transition-all ${addMode === 'single' ? 'bg-zinc-800 text-white' : 'text-zinc-600'}`}>Individual</button>
+                <button onClick={() => setAddMode('routine')} className={`flex-1 py-2 text-xs font-bold uppercase tracking-wider rounded-lg transition-all ${addMode === 'routine' ? 'bg-zinc-800 text-white' : 'text-zinc-600'}`}>Plantilla</button>
               </div>
 
               {addMode === 'single' ? (
                 <form onSubmit={handleSaveNewItem} className="space-y-4">
-                  <select required className="w-full bg-zinc-900 border border-zinc-800 rounded-lg p-3 text-white text-sm focus:border-yellow-400 outline-none" value={newExData.name} onChange={handleSelectExerciseName}>
+                  <select required className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white text-sm focus:border-yellow-400 outline-none" value={newExData.name} onChange={handleSelectExerciseName}>
                     <option value="">Elegir ejercicio...</option>
                     {exercisesLibrary.map(ex => <option key={ex.id} value={ex.name}>{ex.name}</option>)}
                   </select>
                   <div className="grid grid-cols-3 gap-3">
-                    <input type="number" placeholder="Sets" className="bg-zinc-900 border border-zinc-800 rounded-lg p-3 text-white text-sm" value={newExData.sets} onChange={e => setNewExData({...newExData, sets: e.target.value})} />
-                    <input type="text" placeholder="Reps" className="bg-zinc-900 border border-zinc-800 rounded-lg p-3 text-white text-sm" value={newExData.reps} onChange={e => setNewExData({...newExData, reps: e.target.value})} />
-                    <input type="text" placeholder="Peso" className="bg-zinc-900 border border-zinc-800 rounded-lg p-3 text-white text-sm" value={newExData.weight} onChange={e => setNewExData({...newExData, weight: e.target.value})} />
+                    <input type="number" placeholder="Sets" className="bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white text-sm text-center" value={newExData.sets} onChange={e => setNewExData({...newExData, sets: e.target.value})} />
+                    <input type="text" placeholder="Reps" className="bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white text-sm text-center" value={newExData.reps} onChange={e => setNewExData({...newExData, reps: e.target.value})} />
+                    <input type="text" placeholder="Peso" className="bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white text-sm text-center" value={newExData.weight} onChange={e => setNewExData({...newExData, weight: e.target.value})} />
                   </div>
-                  <button type="submit" className="w-full bg-yellow-400 text-black font-bold py-3 rounded-lg uppercase">Guardar</button>
+                  <button type="submit" className="w-full bg-yellow-400 hover:bg-yellow-300 text-black font-black py-4 rounded-xl uppercase tracking-widest mt-2 transition-colors">Guardar Ejercicio</button>
                 </form>
               ) : (
                 <form onSubmit={handleSaveNewItem} className="space-y-4">
-                  <select required className="w-full bg-zinc-900 border border-zinc-800 rounded-lg p-3 text-white text-sm focus:border-yellow-400 outline-none" value={selectedRoutineId} onChange={(e) => setSelectedRoutineId(e.target.value)}>
+                  <select required className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white text-sm focus:border-yellow-400 outline-none" value={selectedRoutineId} onChange={(e) => setSelectedRoutineId(e.target.value)}>
                     <option value="">Elegir plantilla...</option>
                     {routines.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
                   </select>
-                  <button type="submit" className="w-full bg-yellow-400 text-black font-bold py-3 rounded-lg uppercase">Volcar Plantilla</button>
+                  <button type="submit" disabled={!selectedRoutineId} className="w-full bg-yellow-400 disabled:opacity-50 disabled:bg-zinc-800 text-black font-black py-4 rounded-xl uppercase tracking-widest mt-2 transition-colors">Volcar Plantilla</button>
                 </form>
               )}
             </div>
@@ -320,13 +433,13 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary }) {
         </div>
       )}
 
-      {/* MODAL CLONAR */}
+      {/* --- MODAL: REPLICAR DÍA (CLONAR) --- */}
       {isCloneModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm p-4">
-          <div className="bg-zinc-950 w-full max-w-md rounded-2xl border border-zinc-800 flex flex-col max-h-[90vh]">
-            <div className="p-6 border-b border-zinc-800 bg-zinc-900 text-center">
-              <h2 className="text-xl font-bold text-white uppercase">Replicar en Calendario</h2>
-              <p className="text-zinc-400 text-xs mt-1 italic">Selecciona los días para pegar la rutina</p>
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 animate-in fade-in">
+          <div className="bg-zinc-950 w-full max-w-md rounded-3xl border border-zinc-800 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="p-6 border-b border-zinc-800 bg-zinc-900/50 text-center">
+              <h2 className="text-xl font-black text-white uppercase italic tracking-tighter">Replicar en Calendario</h2>
+              <p className="text-zinc-400 text-xs mt-1">Selecciona los días para pegar la rutina</p>
             </div>
             <div className="p-6 overflow-y-auto flex-1 flex flex-col items-center">
               <Calendar 
@@ -335,14 +448,14 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary }) {
                 tileClassName={({ date }) => {
                   const dId = formatDateId(date);
                   if (dId === currentDateId) return 'bg-yellow-400 !text-black font-bold';
-                  if (cloneDates.includes(dId)) return 'bg-green-600 !text-white font-bold';
+                  if (cloneDates.includes(dId)) return 'bg-green-500 !text-black font-bold shadow-[0_0_10px_rgba(34,197,94,0.5)]';
                   return null;
                 }}
               />
             </div>
             <div className="p-4 border-t border-zinc-800 bg-zinc-900 flex gap-3">
-              <button onClick={() => { setIsCloneModalOpen(false); setCloneDates([]); }} className="flex-1 py-3 text-zinc-400 font-bold uppercase text-xs">Cancelar</button>
-              <button onClick={handleSaveClone} disabled={cloneDates.length === 0} className="flex-1 py-3 bg-yellow-400 text-black font-bold rounded-lg uppercase text-xs">Pegar en {cloneDates.length} días</button>
+              <button onClick={() => { setIsCloneModalOpen(false); setCloneDates([]); }} className="flex-1 py-4 text-zinc-400 font-bold uppercase text-xs rounded-xl bg-black">Cancelar</button>
+              <button onClick={handleSaveClone} disabled={cloneDates.length === 0} className="flex-1 py-4 bg-yellow-400 disabled:opacity-50 text-black font-black rounded-xl uppercase text-xs">Pegar en {cloneDates.length} días</button>
             </div>
           </div>
         </div>
