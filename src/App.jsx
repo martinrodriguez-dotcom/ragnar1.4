@@ -1,12 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { Menu, Dumbbell, Settings, BarChart3, Users, Calendar, X, LogOut, List, Layout, Bell, DollarSign } from 'lucide-react';
+import { 
+  Menu, Dumbbell, Settings, BarChart3, Users, Calendar, 
+  X, LogOut, List, Layout, Bell, DollarSign, ShieldCheck 
+} from 'lucide-react';
 
 // --- Firebase ---
 import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, orderBy, where, getDocs, setDoc, getDoc } from 'firebase/firestore';
 import { getAuth, onAuthStateChanged, signOut } from 'firebase/auth';
 import { db } from './firebase'; 
 
-// --- Componentes ---
+// --- Componentes y Vistas ---
 import { Sidebar } from './components/Sidebar';
 import DashboardView from './views/DashboardView';
 import ClientsView from './views/ClientsView';
@@ -20,6 +23,7 @@ import StudentRegistration from './views/StudentRegistration';
 import NotificationsView from './views/NotificationsView';
 import SettingsView from './views/SettingsView';
 import PaymentsView from './views/PaymentsView';
+import CommunityView from './views/CommunityView';
 
 export default function App() {
   // --- ESTADOS GLOBALES ---
@@ -53,17 +57,14 @@ export default function App() {
 
       const start = new Date(client.startDate);
       const day = start.getDate();
-      // Creamos la fecha de vencimiento para este mes
       const expirationDate = new Date(today.getFullYear(), today.getMonth(), day);
       const diffTime = expirationDate - today;
       const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-      // 1. Verificar si ya pagó este mes
       const paymentRef = doc(db, 'clients', client.id, 'payments', currentMonthId);
       const paymentSnap = await getDoc(paymentRef);
       const hasPaid = paymentSnap.exists() && paymentSnap.data().status === 'paid';
 
-      // Si no ha pagado, evaluamos si debemos crear notificación
       if (!hasPaid) {
         let type = null;
         let message = "";
@@ -77,12 +78,10 @@ export default function App() {
         }
 
         if (type) {
-          // Usamos un ID único por mes y por cliente para no duplicar la notificación si recarga la página
           const notifId = `notif_pay_${client.id}_${currentMonthId}`;
           const notifRef = doc(db, 'trainerNotifications', notifId);
           const notifSnap = await getDoc(notifRef);
 
-          // Si la notificación no existe, o si cambió de warning a expired, la guardamos/actualizamos
           if (!notifSnap.exists() || notifSnap.data().type !== type) {
             await setDoc(notifRef, {
               id: notifId,
@@ -139,22 +138,18 @@ export default function App() {
   useEffect(() => {
     if (!user || userRole !== 'trainer') return;
 
-    // A. Escuchar CLIENTES y correr el Escáner de Cobros
     const unsubClients = onSnapshot(collection(db, 'clients'), (snapshot) => {
       const clientsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setClients(clientsData);
-      // Ejecutamos el escáner cada vez que cambian los datos de los clientes
       checkPaymentsStatus(clientsData);
     });
 
-    // B. Escuchar EJERCICIOS
     const qExercises = query(collection(db, 'exercises'), orderBy('name'));
     const unsubExercises = onSnapshot(qExercises, (snapshot) => {
       const exData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setExercises(exData);
     });
 
-    // C. Escuchar NOTIFICACIONES no leídas
     const qNotif = query(collection(db, 'trainerNotifications'), where('read', '==', false));
     const unsubNotif = onSnapshot(qNotif, (snapshot) => {
       setUnreadCount(snapshot.size);
@@ -276,6 +271,7 @@ export default function App() {
           </div>
           <div className="p-4 flex flex-col gap-2 overflow-y-auto">
             <button onClick={() => navigateTo('dashboard')} className="p-4 text-left text-zinc-400 hover:text-white border-b border-zinc-900 flex items-center gap-3"><BarChart3 size={20}/> Panel Principal</button>
+            <button onClick={() => navigateTo('community')} className="p-4 text-left text-zinc-400 hover:text-white border-b border-zinc-900 flex items-center gap-3"><ShieldCheck size={20}/> El Gran Salón</button>
             <button onClick={() => navigateTo('notifications')} className="p-4 text-left text-zinc-400 hover:text-white border-b border-zinc-900 flex justify-between items-center">
                <div className="flex items-center gap-3"><Bell size={20}/> Notificaciones</div>
                {unreadCount > 0 && <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">{unreadCount}</span>}
@@ -315,6 +311,7 @@ export default function App() {
 
         <div className="flex-1 overflow-y-auto p-4 md:p-8 no-scrollbar">
           {activeView === 'dashboard' && <DashboardView clients={clients} navigateTo={navigateTo} onAddClient={handleAddClient} />}
+          {activeView === 'community' && <CommunityView currentUserId={user?.uid} userName="Coach Ragnar" />}
           {activeView === 'notifications' && <NotificationsView />}
           {activeView === 'clients' && <ClientsView clients={clients} navigateTo={navigateTo} onUpdateClient={handleUpdateClientData} onDeleteClient={handleDeleteClient} />}
           {activeView === 'payments' && <PaymentsView />}
