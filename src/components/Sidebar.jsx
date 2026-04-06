@@ -1,5 +1,8 @@
 import React from 'react';
-import { BarChart3, Users, Calendar, Settings, LogOut, List, Layout, Bell } from 'lucide-react';
+import { 
+  BarChart3, Users, Calendar, Settings, LogOut, 
+  List, Layout, Bell, DollarSign 
+} from 'lucide-react';
 
 export function Sidebar({ activeView, navigateTo, notificationCount = 0 }) {
   
@@ -13,7 +16,7 @@ export function Sidebar({ activeView, navigateTo, notificationCount = 0 }) {
       }`}
     >
       {React.cloneElement(icon, { size: 20 })}
-      <span className="tracking-wide">{label}</span>
+      <span className="tracking-wide text-sm uppercase">{label}</span>
       {badge > 0 && (
         <span className="absolute right-3 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
           {badge}
@@ -25,28 +28,23 @@ export function Sidebar({ activeView, navigateTo, notificationCount = 0 }) {
   return (
     <aside className="hidden md:flex flex-col w-64 bg-zinc-950 border-r border-zinc-800 h-screen">
       <div className="p-6 flex items-center gap-3 border-b border-zinc-800">
-        
-        {/* AQUÍ CARGAMOS EL LOGO DESDE LA CARPETA PUBLIC */}
         <img 
           src="/logo.png" 
-          alt="Ragnar Training Logo" 
+          alt="Logo" 
           className="w-10 h-10 object-contain drop-shadow-[0_0_10px_rgba(250,204,21,0.3)]"
-          onError={(e) => {
-            // Si no encuentra el logo.png, evita que se rompa y muestra un cuadro vacío
-            e.target.style.display = 'none';
-          }}
+          onError={(e) => e.target.style.display = 'none'}
         />
-
         <h1 className="text-lg font-black tracking-tighter italic">
           <span className="text-yellow-400">RAGNAR</span>
           <span className="text-white">-TRAINING</span>
         </h1>
       </div>
 
-      <nav className="flex-1 p-4 space-y-2">
-        <SidebarItem icon={<BarChart3 />} label="Panel General" view="dashboard" />
+      <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
+        <SidebarItem icon={<BarChart3 />} label="Panel Principal" view="dashboard" />
         <SidebarItem icon={<Bell />} label="Notificaciones" view="notifications" badge={notificationCount} />
         <SidebarItem icon={<Users />} label="Clientes" view="clients" />
+        <SidebarItem icon={<DollarSign />} label="Cobros" view="payments" />
         <SidebarItem icon={<List />} label="Ejercicios" view="exercises" />
         <SidebarItem icon={<Layout />} label="Rutinas" view="routines" />
         <SidebarItem icon={<Calendar />} label="Agenda" view="calendar" />
@@ -54,7 +52,7 @@ export function Sidebar({ activeView, navigateTo, notificationCount = 0 }) {
       </nav>
 
       <div className="p-4 border-t border-zinc-800">
-        <button className="flex items-center gap-3 text-zinc-500 hover:text-yellow-400 w-full p-2 rounded transition-colors">
+        <button className="flex items-center gap-3 text-zinc-500 hover:text-red-400 w-full p-2 rounded transition-colors text-sm font-bold uppercase">
           <LogOut size={20} />
           <span>Cerrar Sesión</span>
         </button>
