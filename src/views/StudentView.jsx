@@ -22,13 +22,15 @@ export default function StudentView({ clientId }) {
   const [showPaymentModal, setShowPaymentModal] = useState(false);
 
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [currentView, setCurrentView] = useState('workout'); // 'workout' | 'chat' | 'profile'
+  const [currentView, setCurrentView] = useState('workout'); 
 
-  // --- CHAT Y NOTIFICACIONES ---
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [unreadCount, setUnreadCount] = useState(0);
   const messagesEndRef = useRef(null);
+
+  // Array de colores RIR
+  const rirColors = ['bg-[#ffe4c4]', 'bg-[#fcd34d]', 'bg-[#fbbf24]', 'bg-[#f97316]', 'bg-[#ef4444]', 'bg-[#b91c1c]'];
 
   const auth = getAuth();
   
@@ -81,24 +83,19 @@ export default function StudentView({ clientId }) {
     return () => { unsubSessions(); unsubDaily(); };
   }, [date, client, currentDateId]);
 
-  // Cargar Chat y Notificaciones del Alumno
   useEffect(() => {
     if (!client) return;
     const q = query(collection(db, 'clients', client.id, 'messages'), orderBy('createdAt', 'asc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setMessages(msgs);
-      
-      // Contar mensajes del entrenador no leídos
       const unread = msgs.filter(m => m.sender === 'trainer' && !m.read).length;
       setUnreadCount(unread);
-      
       setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
     });
     return () => unsubscribe();
   }, [client]);
 
-  // Marcar como leídos cuando el alumno entra al chat
   useEffect(() => {
     if (currentView === 'chat' && unreadCount > 0 && client) {
       messages.forEach(async (msg) => {
@@ -149,12 +146,7 @@ export default function StudentView({ clientId }) {
     e.preventDefault();
     if (!newMessage.trim()) return;
     try {
-      await addDoc(collection(db, 'clients', client.id, 'messages'), {
-        text: newMessage,
-        sender: 'student',
-        createdAt: new Date(),
-        read: false 
-      });
+      await addDoc(collection(db, 'clients', client.id, 'messages'), { text: newMessage, sender: 'student', createdAt: new Date(), read: false });
       setNewMessage('');
     } catch (error) { console.error(error); }
   };
@@ -232,10 +224,26 @@ export default function StudentView({ clientId }) {
                 {dailySession.length > 0 ? (
                   dailySession.map((ex, exIdx) => (
                     <div key={exIdx} className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 shadow-sm">
-                      <div className="flex justify-between items-start mb-5">
-                        <div className="flex items-center gap-3"><div className="w-8 h-8 rounded-xl bg-yellow-400/10 text-yellow-400 flex items-center justify-center font-black">{exIdx + 1}</div><h3 className="font-bold text-lg uppercase tracking-tight">{ex.name}</h3></div>
+                      <div className="flex justify-between items-start mb-3">
+                        <div className="flex items-center gap-3"><div className="w-8 h-8 rounded-xl bg-yellow-400/10 text-yellow-400 flex items-center justify-center font-black">{exIdx + 1}</div><h3 className="font-bold text-lg uppercase tracking-tight leading-none">{ex.name}</h3></div>
                         {ex.videoUrl && <a href={ex.videoUrl} target="_blank" rel="noreferrer" className="p-2 bg-blue-500/10 text-blue-400 rounded-xl"><Video size={20}/></a>}
                       </div>
+
+                      {/* --- NUEVO: BARRA RIR PARA EL ALUMNO --- */}
+                      {ex.rir && (
+                        <div className="mb-4 bg-black/40 p-3 rounded-xl border border-zinc-800/50">
+                          <div className="flex justify-between items-center mb-1.5">
+                             <span className="text-[10px] text-zinc-500 font-black uppercase tracking-widest">Intensidad Percibida</span>
+                             <span className="text-[10px] text-black font-black bg-yellow-400 px-2 py-0.5 rounded">RIR {ex.rir}</span>
+                          </div>
+                          <div className="flex gap-1 h-2.5">
+                             {[5, 4, 3, 2, 1, 0].map((val, i) => (
+                                <div key={val} className={`flex-1 rounded-full transition-colors ${val >= parseInt(ex.rir) ? rirColors[i] : 'bg-zinc-800'}`}></div>
+                             ))}
+                          </div>
+                        </div>
+                      )}
+
                       <div className="grid grid-cols-4 gap-2 mb-2 px-2"><span className="text-[9px] uppercase font-black text-zinc-500">Serie</span><span className="text-[9px] uppercase font-black text-zinc-500 text-center">Objetivo</span><span className="text-[9px] uppercase font-black text-zinc-500 text-center">Reps</span><span className="text-[9px] uppercase font-black text-zinc-500 text-center">Peso</span></div>
                       <div className="space-y-2">
                         {[...Array(parseInt(ex.sets || 0))].map((_, sIdx) => {
