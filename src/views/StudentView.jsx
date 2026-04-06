@@ -3,7 +3,8 @@ import Calendar from 'react-calendar';
 import 'react-calendar/dist/Calendar.css';
 import { 
   Dumbbell, CheckCircle, User, Menu, X, LogOut, MessageSquare, Send, 
-  AlertTriangle, Trophy, CreditCard, ExternalLink, ChevronRight, Video, Bell, Users, TrendingUp
+  AlertTriangle, Trophy, CreditCard, ExternalLink, ChevronRight, Video, 
+  Bell, Users, TrendingUp, Calendar as CalendarIcon, ChevronLeft
 } from 'lucide-react';
 import { doc, getDoc, collection, onSnapshot, setDoc, addDoc, query, orderBy, updateDoc } from 'firebase/firestore';
 import { getAuth, signOut } from 'firebase/auth';
@@ -24,14 +25,16 @@ export default function StudentView({ clientId }) {
   const [showPaymentModal, setShowPaymentModal] = useState(false);
 
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [currentView, setCurrentView] = useState('workout'); 
+  
+  // NUEVO FLUJO: currentView arranca en 'calendar'. 
+  // 'calendar' -> Muestra el mes. 'workout' -> Muestra el detalle del día.
+  const [currentView, setCurrentView] = useState('calendar'); 
 
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [unreadCount, setUnreadCount] = useState(0);
   const messagesEndRef = useRef(null);
 
-  // --- CONTROL DE INASISTENCIA (DÍA ANTERIOR) ---
   const [missedWorkout, setMissedWorkout] = useState(null);
   const [missedReason, setMissedReason] = useState('');
 
@@ -67,7 +70,7 @@ export default function StudentView({ clientId }) {
     if (clientId) fetchData();
   }, [clientId, currentMonthId]);
 
-  // VERIFICAR SI FALTÓ AYER
+  // Verificar si faltó ayer
   useEffect(() => {
     if (!client) return;
     const checkYesterday = async () => {
@@ -140,31 +143,23 @@ export default function StudentView({ clientId }) {
         missedReason: missedReason
       });
       await addDoc(collection(db, 'trainerNotifications'), {
-        type: 'missed_workout',
-        clientId: client.id,
-        clientName: client.name,
-        date: missedWorkout.id,
-        reason: missedReason,
-        read: false,
-        createdAt: new Date()
+        type: 'missed_workout', clientId: client.id, clientName: client.name, date: missedWorkout.id, reason: missedReason, read: false, createdAt: new Date()
       });
       await addDoc(collection(db, 'clients', client.id, 'messages'), {
-        text: `Sistema: No pude entrenar ayer (${missedWorkout.date.toLocaleDateString()}). Motivo: ${missedReason}`,
-        sender: 'system',
-        createdAt: new Date(),
-        read: false
+        text: `Sistema: No pude entrenar ayer (${missedWorkout.date.toLocaleDateString()}). Motivo: ${missedReason}`, sender: 'system', createdAt: new Date(), read: false
       });
-
       setMissedWorkout(null);
       setMissedReason('');
     } catch (error) { console.error(error); }
   };
 
+  // NUEVO FLUJO: Al tocar una fecha, te lleva a la vista de detalle ('workout')
   const handleDateChange = (newDate) => {
     if (!hasPaidMonth) {
       setShowPaymentModal(true);
     } else {
       setDate(newDate);
+      setCurrentView('workout'); 
     }
   };
 
@@ -215,7 +210,6 @@ export default function StudentView({ clientId }) {
   return (
     <div className="min-h-screen bg-zinc-950 text-white font-sans flex flex-col relative overflow-x-hidden">
       
-      {/* MODAL PAGO PENDIENTE */}
       {showPaymentModal && (
         <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-md flex items-center justify-center p-6 animate-in fade-in">
           <div className="bg-zinc-900 border border-red-500/30 rounded-3xl p-8 w-full max-w-sm text-center shadow-2xl">
@@ -234,7 +228,6 @@ export default function StudentView({ clientId }) {
         </div>
       )}
 
-      {/* MODAL FALTA INJUSTIFICADA (DÍA ANTERIOR) */}
       {missedWorkout && (
         <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-md flex items-center justify-center p-6 animate-in fade-in">
           <div className="bg-zinc-900 border border-red-500/30 rounded-3xl p-8 w-full max-w-md text-center shadow-2xl">
@@ -261,12 +254,11 @@ export default function StudentView({ clientId }) {
         </div>
       )}
 
-      {/* MENÚ LATERAL MÓVIL */}
       {isMenuOpen && (
         <div className="fixed inset-0 z-50 bg-black/95 flex flex-col p-6 animate-in slide-in-from-right">
           <div className="flex justify-end mb-10"><button onClick={() => setIsMenuOpen(false)} className="p-2 bg-zinc-900 rounded-full"><X size={32}/></button></div>
           <div className="flex flex-col gap-6 text-2xl font-black uppercase italic">
-            <button onClick={() => { setCurrentView('workout'); setIsMenuOpen(false); }} className={`text-left ${currentView === 'workout' ? 'text-yellow-400' : 'text-zinc-600'}`}>Mi Entrenamiento</button>
+            <button onClick={() => { setCurrentView('calendar'); setIsMenuOpen(false); }} className={`text-left ${['calendar', 'workout'].includes(currentView) ? 'text-yellow-400' : 'text-zinc-600'}`}>Mi Agenda</button>
             <button onClick={() => { setCurrentView('stats'); setIsMenuOpen(false); }} className={`text-left ${currentView === 'stats' ? 'text-yellow-400' : 'text-zinc-600'}`}>Mi Estadística</button>
             <button onClick={() => { setCurrentView('community'); setIsMenuOpen(false); }} className={`text-left ${currentView === 'community' ? 'text-yellow-400' : 'text-zinc-600'}`}>Salón Ragnar</button>
             <button onClick={() => { setCurrentView('chat'); setIsMenuOpen(false); }} className={`text-left flex items-center gap-4 ${currentView === 'chat' ? 'text-yellow-400' : 'text-zinc-600'}`}>Chat {unreadCount > 0 && <span className="bg-red-500 text-white text-xs px-2 py-1 rounded-full not-italic font-sans">{unreadCount}</span>}</button>
@@ -277,14 +269,12 @@ export default function StudentView({ clientId }) {
         </div>
       )}
 
-      {/* HEADER PRINCIPAL */}
       <div className="bg-yellow-400 text-black p-4 pb-10 rounded-b-[3rem] shadow-xl relative z-10">
          <div className="flex justify-between items-center max-w-2xl mx-auto">
             <div className="flex items-center gap-4">
                <div className="w-12 h-12 bg-black rounded-2xl flex items-center justify-center text-yellow-400 shadow-lg"><User size={24}/></div>
                <div><h1 className="text-xl font-black uppercase leading-none tracking-tighter">{client?.name}</h1><p className="text-[10px] font-black opacity-60 uppercase tracking-widest mt-1">Atleta Ragnar</p></div>
             </div>
-            
             <div className="flex items-center gap-2">
                <button onClick={() => setCurrentView('chat')} className="relative p-2 bg-black/5 rounded-lg text-black">
                  <Bell size={24}/>
@@ -297,133 +287,147 @@ export default function StudentView({ clientId }) {
 
       <main className="flex-1 max-w-2xl mx-auto w-full px-4 -mt-6 pb-28 relative z-20">
         
-        {/* --- VISTA PRINCIPAL: RUTINA (LAVADO DE CARA) --- */}
-        {currentView === 'workout' && (
-          <div className="space-y-6">
-            
+        {/* --- VISTA 0: CALENDARIO (HOME) --- */}
+        {currentView === 'calendar' && (
+          <div className="space-y-6 animate-in fade-in">
             {!hasPaidMonth && (
               <div onClick={() => setShowPaymentModal(true)} className="bg-red-600 text-white p-4 rounded-2xl flex items-center justify-between shadow-lg shadow-red-600/20 animate-pulse cursor-pointer">
                 <div className="flex items-center gap-3"><AlertTriangle size={20}/><span className="font-black uppercase text-xs">Pago pendiente: {date.toLocaleString('es-ES', { month: 'long' })}</span></div><ChevronRight size={20}/>
               </div>
             )}
-
-            {/* 1. CALENDARIO ARRIBA */}
-            <div className="bg-zinc-900 rounded-[2rem] border border-zinc-800 p-6 shadow-xl animate-in fade-in slide-in-from-bottom-4">
-               <div className="flex items-center gap-2 mb-4">
-                 <Calendar size={18} className="text-yellow-400"/>
-                 <h3 className="text-sm font-black uppercase tracking-widest text-white">Seleccionar Día</h3>
+            
+            <div className="bg-zinc-900 rounded-[2rem] border border-zinc-800 p-6 shadow-xl">
+               <div className="flex items-center justify-between mb-6">
+                 <div className="flex items-center gap-2">
+                   <CalendarIcon size={20} className="text-yellow-400"/>
+                   <h3 className="text-lg font-black uppercase tracking-widest text-white italic">Mi Agenda</h3>
+                 </div>
                </div>
+               
+               <p className="text-zinc-400 text-sm mb-6 bg-black/40 p-4 rounded-xl border border-zinc-800">
+                 Toca un día resaltado para ver y completar tu entrenamiento.
+               </p>
+
                <Calendar 
                  onChange={handleDateChange} 
                  value={date} 
-                 className="react-calendar-custom-mini" 
-                 tileClassName={({ date }) => allSessionsIds.includes(formatDateId(date)) ? 'has-workout' : null} 
+                 className="react-calendar-custom" 
+                 tileClassName={({ date: tileDate }) => allSessionsIds.includes(formatDateId(tileDate)) ? 'has-workout' : null} 
                />
             </div>
+          </div>
+        )}
 
-            {/* 2. RUTINA DEL DÍA SELECCIONADO */}
-            <div className="pt-2 animate-in fade-in duration-500">
-              <div className="flex justify-between items-end px-2 mb-4">
-                  <h2 className="text-2xl font-black text-white uppercase italic tracking-tighter">
+        {/* --- VISTA 1: RUTINA (DETALLE) --- */}
+        {currentView === 'workout' && (
+          <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
+            
+            <div className="flex items-center gap-4 px-2 mb-2">
+                <button 
+                  onClick={() => setCurrentView('calendar')} 
+                  className="w-10 h-10 bg-zinc-900 border border-zinc-800 rounded-full flex items-center justify-center text-white hover:text-yellow-400 hover:border-yellow-400 transition-colors shadow-lg"
+                >
+                  <ChevronLeft size={24}/>
+                </button>
+                <div>
+                  <h2 className="text-2xl font-black text-white uppercase italic tracking-tighter leading-none">
                     {isSessionFinalized ? 'Resumen' : 'Entrenamiento'}
                   </h2>
-                  <div className="bg-yellow-400/10 px-3 py-1 rounded-full border border-yellow-400/20">
-                    <span className="text-[10px] text-yellow-400 font-black uppercase">
-                      {date.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric' })}
-                    </span>
-                  </div>
-              </div>
-
-              <div className={`space-y-4 ${!hasPaidMonth ? 'opacity-20 pointer-events-none' : ''}`}>
-                  {dailySession.length > 0 ? (
-                    dailySession.map((ex, exIdx) => (
-                      <div key={exIdx} className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 shadow-sm">
-                        <div className="flex justify-between items-start mb-3">
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-xl bg-yellow-400/10 text-yellow-400 flex items-center justify-center font-black">
-                              {exIdx + 1}
-                            </div>
-                            <h3 className="font-bold text-lg uppercase tracking-tight leading-none text-white">{ex.name}</h3>
-                          </div>
-                          {ex.videoUrl && (
-                            <a href={ex.videoUrl} target="_blank" rel="noreferrer" className="p-2 bg-blue-500/10 text-blue-400 rounded-xl hover:bg-blue-500/20 transition-colors">
-                              <Video size={20}/>
-                            </a>
-                          )}
-                        </div>
-
-                        {/* BARRA RIR */}
-                        {ex.rir && (
-                          <div className="mb-4 bg-black/40 p-3 rounded-xl border border-zinc-800/50">
-                            <div className="flex justify-between items-center mb-1.5">
-                               <span className="text-[10px] text-zinc-500 font-black uppercase tracking-widest">Intensidad Percibida</span>
-                               <span className="text-[10px] text-black font-black bg-yellow-400 px-2 py-0.5 rounded">RIR {ex.rir}</span>
-                            </div>
-                            <div className="flex gap-1 h-2.5">
-                               {[5, 4, 3, 2, 1, 0].map((val, i) => (
-                                  <div key={val} className={`flex-1 rounded-full transition-colors ${val >= parseInt(ex.rir) ? rirColors[i] : 'bg-zinc-800'}`}></div>
-                               ))}
-                            </div>
-                          </div>
-                        )}
-
-                        <div className="grid grid-cols-4 gap-2 mb-2 px-2 text-[9px] uppercase font-black text-zinc-500 text-center">
-                          <span>Serie</span><span>Objetivo</span><span>Reps</span><span>Peso</span>
-                        </div>
-                        
-                        <div className="space-y-2">
-                          {[...Array(parseInt(ex.sets || 0))].map((_, sIdx) => {
-                            const isDone = dailySession[exIdx].actualSets?.[sIdx]?.completed;
-                            return (
-                              <div key={sIdx} className={`grid grid-cols-4 gap-2 items-center p-2 rounded-2xl transition-colors ${isDone ? 'bg-green-500/10 border border-green-500/20' : 'bg-black/30 border border-zinc-800/50'}`}>
-                                <span className="font-bold text-sm ml-2 text-white"># {sIdx + 1}</span>
-                                <span className="text-center text-xs text-zinc-400">{ex.reps}</span>
-                                <input 
-                                  type="number" 
-                                  placeholder="0" 
-                                  disabled={isSessionFinalized} 
-                                  className="bg-zinc-800 border-none rounded-lg py-1 text-center text-sm font-bold text-white focus:ring-1 focus:ring-yellow-400 disabled:opacity-50" 
-                                  value={dailySession[exIdx].actualSets?.[sIdx]?.reps || ''} 
-                                  onChange={(e) => handleUpdateSet(exIdx, sIdx, 'reps', e.target.value)} 
-                                />
-                                <input 
-                                  type="number" 
-                                  placeholder="kg" 
-                                  disabled={isSessionFinalized} 
-                                  className="bg-zinc-800 border-none rounded-lg py-1 text-center text-sm font-bold text-white focus:ring-1 focus:ring-yellow-400 disabled:opacity-50" 
-                                  value={dailySession[exIdx].actualSets?.[sIdx]?.weight || ''} 
-                                  onChange={(e) => handleUpdateSet(exIdx, sIdx, 'weight', e.target.value)} 
-                                />
-                                <button 
-                                  onClick={() => toggleSetComplete(exIdx, sIdx)} 
-                                  className={`col-span-4 mt-1 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all ${isDone ? 'bg-green-500 text-black shadow-[0_0_10px_rgba(34,197,94,0.3)]' : 'bg-zinc-800 text-zinc-400 hover:text-white'}`}
-                                >
-                                  {isDone ? <><CheckCircle size={14}/> Completada</> : 'Marcar Completada'}
-                                </button>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="text-center py-16 bg-zinc-900/30 rounded-[2rem] border border-dashed border-zinc-800 flex flex-col items-center">
-                      <Dumbbell className="w-12 h-12 text-zinc-800 mb-4 opacity-30"/>
-                      <p className="text-zinc-500 font-bold uppercase tracking-widest text-sm">Día de Descanso</p>
-                      <p className="text-zinc-600 text-xs mt-2 max-w-[200px]">No tienes ejercicios asignados para esta fecha.</p>
-                    </div>
-                  )}
-              </div>
-              
-              {dailySession.length > 0 && !isSessionFinalized && hasPaidMonth && (
-                <button 
-                  onClick={handleFinishWorkout} 
-                  className="w-full bg-green-500 text-black font-black py-5 mt-6 rounded-[2rem] uppercase tracking-widest shadow-[0_0_20px_rgba(34,197,94,0.2)] active:scale-95 transition-all text-sm flex justify-center items-center gap-2"
-                >
-                  <Trophy size={20}/> Finalizar Entrenamiento
-                </button>
-              )}
+                  <p className="text-yellow-400 font-bold text-xs uppercase mt-1">
+                    {date.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })}
+                  </p>
+                </div>
             </div>
+
+            <div className={`space-y-4 ${!hasPaidMonth ? 'opacity-20 pointer-events-none' : ''}`}>
+                {dailySession.length > 0 ? (
+                  dailySession.map((ex, exIdx) => (
+                    <div key={exIdx} className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 shadow-sm">
+                      <div className="flex justify-between items-start mb-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-xl bg-yellow-400/10 text-yellow-400 flex items-center justify-center font-black">
+                            {exIdx + 1}
+                          </div>
+                          <h3 className="font-bold text-lg uppercase tracking-tight leading-none text-white">{ex.name}</h3>
+                        </div>
+                        {ex.videoUrl && (
+                          <a href={ex.videoUrl} target="_blank" rel="noreferrer" className="p-2 bg-blue-500/10 text-blue-400 rounded-xl hover:bg-blue-500/20 transition-colors">
+                            <Video size={20}/>
+                          </a>
+                        )}
+                      </div>
+
+                      {/* BARRA RIR */}
+                      {ex.rir && (
+                        <div className="mb-4 bg-black/40 p-3 rounded-xl border border-zinc-800/50">
+                          <div className="flex justify-between items-center mb-1.5">
+                             <span className="text-[10px] text-zinc-500 font-black uppercase tracking-widest">Intensidad Percibida</span>
+                             <span className="text-[10px] text-black font-black bg-yellow-400 px-2 py-0.5 rounded">RIR {ex.rir}</span>
+                          </div>
+                          <div className="flex gap-1 h-2.5">
+                             {[5, 4, 3, 2, 1, 0].map((val, i) => (
+                                <div key={val} className={`flex-1 rounded-full transition-colors ${val >= parseInt(ex.rir) ? rirColors[i] : 'bg-zinc-800'}`}></div>
+                             ))}
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="grid grid-cols-4 gap-2 mb-2 px-2 text-[9px] uppercase font-black text-zinc-500 text-center">
+                        <span>Serie</span><span>Objetivo</span><span>Reps</span><span>Peso</span>
+                      </div>
+                      
+                      <div className="space-y-2">
+                        {[...Array(parseInt(ex.sets || 0))].map((_, sIdx) => {
+                          const isDone = dailySession[exIdx].actualSets?.[sIdx]?.completed;
+                          return (
+                            <div key={sIdx} className={`grid grid-cols-4 gap-2 items-center p-2 rounded-2xl transition-colors ${isDone ? 'bg-green-500/10 border border-green-500/20' : 'bg-black/30 border border-zinc-800/50'}`}>
+                              <span className="font-bold text-sm ml-2 text-white"># {sIdx + 1}</span>
+                              <span className="text-center text-xs text-zinc-400">{ex.reps}</span>
+                              <input 
+                                type="number" 
+                                placeholder="0" 
+                                disabled={isSessionFinalized} 
+                                className="bg-zinc-800 border-none rounded-lg py-1 text-center text-sm font-bold text-white focus:ring-1 focus:ring-yellow-400 disabled:opacity-50" 
+                                value={dailySession[exIdx].actualSets?.[sIdx]?.reps || ''} 
+                                onChange={(e) => handleUpdateSet(exIdx, sIdx, 'reps', e.target.value)} 
+                              />
+                              <input 
+                                type="number" 
+                                placeholder="kg" 
+                                disabled={isSessionFinalized} 
+                                className="bg-zinc-800 border-none rounded-lg py-1 text-center text-sm font-bold text-white focus:ring-1 focus:ring-yellow-400 disabled:opacity-50" 
+                                value={dailySession[exIdx].actualSets?.[sIdx]?.weight || ''} 
+                                onChange={(e) => handleUpdateSet(exIdx, sIdx, 'weight', e.target.value)} 
+                              />
+                              <button 
+                                onClick={() => toggleSetComplete(exIdx, sIdx)} 
+                                className={`col-span-4 mt-1 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all ${isDone ? 'bg-green-500 text-black shadow-[0_0_10px_rgba(34,197,94,0.3)]' : 'bg-zinc-800 text-zinc-400 hover:text-white'}`}
+                              >
+                                {isDone ? <><CheckCircle size={14}/> Completada</> : 'Marcar Completada'}
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-center py-16 bg-zinc-900/30 rounded-[2rem] border border-dashed border-zinc-800 flex flex-col items-center">
+                    <Dumbbell className="w-12 h-12 text-zinc-800 mb-4 opacity-30"/>
+                    <p className="text-zinc-500 font-bold uppercase tracking-widest text-sm">Día de Descanso</p>
+                    <p className="text-zinc-600 text-xs mt-2 max-w-[200px]">No tienes ejercicios asignados para esta fecha.</p>
+                  </div>
+                )}
+            </div>
+            
+            {dailySession.length > 0 && !isSessionFinalized && hasPaidMonth && (
+              <button 
+                onClick={handleFinishWorkout} 
+                className="w-full bg-green-500 text-black font-black py-5 mt-6 rounded-[2rem] uppercase tracking-widest shadow-[0_0_20px_rgba(34,197,94,0.2)] active:scale-95 transition-all text-sm flex justify-center items-center gap-2"
+              >
+                <Trophy size={20}/> Finalizar Entrenamiento
+              </button>
+            )}
           </div>
         )}
 
@@ -432,7 +436,7 @@ export default function StudentView({ clientId }) {
 
         {/* --- VISTA: MI ESTADÍSTICA --- */}
         {currentView === 'stats' && (
-          <div className="space-y-6">
+          <div className="space-y-6 animate-in fade-in">
             <ProgressChart clientId={client?.id} />
           </div>
         )}
@@ -551,11 +555,11 @@ export default function StudentView({ clientId }) {
       {/* NAV BAR INFERIOR (5 Botones) */}
       <nav className="fixed bottom-0 left-0 right-0 bg-zinc-950/90 backdrop-blur-xl border-t border-zinc-800 p-3 pb-6 flex justify-between items-center z-[40]">
         <button 
-          onClick={() => setCurrentView('workout')} 
-          className={`flex flex-col items-center justify-center gap-1.5 w-1/5 transition-colors ${currentView === 'workout' ? 'text-yellow-400' : 'text-zinc-500'}`}
+          onClick={() => setCurrentView('calendar')} 
+          className={`flex flex-col items-center justify-center gap-1.5 w-1/5 transition-colors ${['calendar', 'workout'].includes(currentView) ? 'text-yellow-400' : 'text-zinc-500'}`}
         >
-          <Dumbbell size={22}/>
-          <span className="text-[8px] font-black uppercase tracking-wider">Rutina</span>
+          <CalendarIcon size={22}/>
+          <span className="text-[8px] font-black uppercase tracking-wider">Agenda</span>
         </button>
         
         <button 
