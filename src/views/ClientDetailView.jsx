@@ -168,11 +168,11 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary }) {
   };
 
   return (
-    <div className="max-w-6xl mx-auto animate-in fade-in pb-10 flex flex-col h-[calc(100vh-80px)]">
+    <div className="max-w-6xl mx-auto animate-in fade-in pb-10 flex flex-col min-h-[calc(100vh-80px)]">
       
       {/* HEADER CLIENTE */}
-      <div className="flex flex-col gap-4 mb-6">
-        <div className="flex items-center justify-between bg-zinc-900 p-6 rounded-2xl border border-zinc-800">
+      <div className="flex flex-col gap-4 mb-6 shrink-0">
+        <div className="flex items-center justify-between bg-zinc-900 p-6 rounded-2xl border border-zinc-800 shadow-xl">
           <div className="flex items-center gap-4">
             <button onClick={goBack} className="p-2 bg-zinc-800 hover:bg-yellow-400 hover:text-black text-white rounded-full transition-colors"><ChevronLeft size={24} /></button>
             <div className="w-14 h-14 bg-zinc-800 text-yellow-400 rounded-full flex items-center justify-center font-bold text-xl border-2 border-zinc-700">{client.name.charAt(0)}</div>
@@ -202,28 +202,28 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary }) {
 
       {/* --- VISTA 1: RUTINA --- */}
       {activeTab === 'routine' && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 overflow-hidden">
-          <div className="lg:col-span-1 overflow-y-auto pr-2 custom-scrollbar">
-            <div className="bg-zinc-900 p-6 rounded-2xl border border-zinc-800 shadow-xl">
-              <h3 className="text-white font-bold uppercase mb-4 text-xs tracking-widest flex items-center gap-2"><CalendarIcon size={18} className="text-yellow-400"/> Agenda del Atleta</h3>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1">
+          <div className="lg:col-span-1">
+            <div className="bg-zinc-900 p-6 rounded-2xl border border-zinc-800 shadow-xl sticky top-4">
+              <h3 className="text-white font-bold uppercase mb-4 text-xs tracking-widest flex items-center gap-2"><CalendarIcon size={18} className="text-yellow-400"/> Agenda</h3>
               <Calendar onChange={setDate} value={date} className="react-calendar-custom" tileClassName={({ date }) => allSessionsIds.includes(formatDateId(date)) ? 'has-workout' : null} />
             </div>
           </div>
 
           <div className="lg:col-span-2">
-            <div className="bg-zinc-900 rounded-2xl border border-zinc-800 overflow-hidden flex flex-col h-full shadow-xl">
-              <div className="p-6 border-b border-zinc-800 flex justify-between items-center bg-zinc-950/50 shrink-0">
+            <div className="bg-zinc-900 rounded-2xl border border-zinc-800 flex flex-col min-h-[500px] shadow-xl">
+              <div className="p-6 border-b border-zinc-800 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-zinc-950/50 rounded-t-2xl shrink-0">
                 <div>
-                  <h3 className="text-2xl font-black text-white uppercase italic tracking-tighter">{date.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })}</h3>
+                  <h3 className="text-xl md:text-2xl font-black text-white uppercase italic tracking-tighter">{date.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })}</h3>
                   <p className="text-zinc-500 text-sm font-medium mt-1">{dailySession.length} movimientos asignados</p>
                 </div>
                 <div className="flex gap-2">
-                  {dailySession.length > 0 && <button onClick={() => setIsCloneModalOpen(true)} className="bg-zinc-800 hover:bg-zinc-700 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 transition-colors border border-zinc-700"><Copy size={18}/> <span className="hidden sm:inline">Replicar</span></button>}
+                  {dailySession.length > 0 && <button onClick={() => setIsCloneModalOpen(true)} className="bg-zinc-800 hover:bg-zinc-700 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 transition-colors border border-zinc-700 shadow-lg"><Copy size={18}/> <span className="hidden sm:inline">Copiar</span></button>}
                   <button onClick={() => setIsAddingEx(true)} className="bg-yellow-400 hover:bg-yellow-300 text-black px-4 py-2 rounded-lg font-bold flex items-center gap-2 transition-colors shadow-lg"><Plus size={18}/> Agregar</button>
                 </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-zinc-950/20 custom-scrollbar">
+              <div className="flex-1 p-6 space-y-4 bg-zinc-950/20 rounded-b-2xl">
                 {dailySession.length > 0 ? (
                   dailySession.map((ex, idx) => (
                     <div key={idx} className="bg-black p-5 rounded-2xl border border-zinc-800 flex flex-col group hover:border-yellow-400/50 transition-all shadow-md">
@@ -255,7 +255,7 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary }) {
                     </div>
                   ))
                 ) : (
-                  <div className="flex flex-col items-center justify-center h-full text-zinc-700"><Dumbbell size={64} className="mb-4 opacity-20"/><p className="text-lg font-bold uppercase tracking-widest opacity-30">Día de Descanso</p></div>
+                  <div className="flex flex-col items-center justify-center h-40 text-zinc-700"><Dumbbell size={48} className="mb-4 opacity-20"/><p className="text-lg font-bold uppercase tracking-widest opacity-30">Día de Descanso</p></div>
                 )}
               </div>
             </div>
@@ -265,18 +265,18 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary }) {
 
       {/* --- VISTA 2: ESTADÍSTICAS --- */}
       {activeTab === 'stats' && (
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1">
           <ProgressChart clientId={client.id} />
         </div>
       )}
 
       {/* --- VISTA 3: CHAT --- */}
       {activeTab === 'chat' && (
-        <div className="bg-zinc-900 rounded-2xl border border-zinc-800 flex flex-col h-full overflow-hidden shadow-xl">
+        <div className="bg-zinc-900 rounded-2xl border border-zinc-800 flex flex-col flex-1 min-h-[500px] shadow-xl">
           <div className="p-4 border-b border-zinc-800 bg-zinc-950/50 flex items-center gap-3 shrink-0">
             <MessageSquare className="text-yellow-400" size={24}/>
             <div>
-              <h3 className="text-white font-bold uppercase tracking-widest">Conversación con {client.name}</h3>
+              <h3 className="text-white font-bold uppercase tracking-widest">Chat con {client.name}</h3>
               <p className="text-zinc-500 text-xs">Los mensajes de sistema y excusas también aparecerán aquí.</p>
             </div>
           </div>
@@ -290,7 +290,7 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary }) {
                 const isSystem = msg.sender === 'system';
                 return (
                   <div key={msg.id} className={`flex ${isTrainer ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[70%] p-4 rounded-2xl text-sm ${isTrainer ? 'bg-yellow-400 text-black rounded-tr-none' : isSystem ? 'bg-red-500/20 border border-red-500/30 text-red-100 rounded-tl-none font-bold' : 'bg-zinc-800 text-white rounded-tl-none'}`}>
+                    <div className={`max-w-[70%] p-4 rounded-2xl text-sm ${isTrainer ? 'bg-yellow-400 text-black rounded-tr-none' : isSystem ? 'bg-red-500/20 border border-red-500/30 text-red-100 rounded-tl-none font-bold' : 'bg-zinc-800 text-white rounded-tl-none border border-zinc-700'}`}>
                       {msg.text}
                       <span className="block text-[10px] opacity-60 mt-2 text-right">{msg.createdAt?.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
                     </div>
