@@ -3,7 +3,7 @@ import Calendar from 'react-calendar';
 import 'react-calendar/dist/Calendar.css';
 import { 
   ChevronLeft, Plus, Trash2, Dumbbell, User, Calendar as CalendarIcon, 
-  Video, Copy, X, Save, MessageSquare, Send, BarChart3 
+  Video, Copy, X, Save, MessageSquare, Send, BarChart3, Link, Check 
 } from 'lucide-react';
 import { collection, onSnapshot, doc, setDoc, updateDoc, deleteDoc, addDoc, query, orderBy } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -27,6 +27,9 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary }) {
 
   const [isCloneModalOpen, setIsCloneModalOpen] = useState(false);
   const [cloneDates, setCloneDates] = useState([]);
+  
+  // Estado para el botón de copiar link
+  const [copied, setCopied] = useState(false);
 
   const rirColors = ['bg-[#ffe4c4]', 'bg-[#fcd34d]', 'bg-[#fbbf24]', 'bg-[#f97316]', 'bg-[#ef4444]', 'bg-[#b91c1c]'];
 
@@ -167,6 +170,13 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary }) {
     } catch (error) { console.error(error); alert("Error al replicar."); }
   };
 
+  const handleCopyInvite = () => {
+    const inviteLink = `${window.location.origin}/?invite=${client.id}`;
+    navigator.clipboard.writeText(inviteLink);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   return (
     <div className="max-w-6xl mx-auto animate-in fade-in pb-10 flex flex-col min-h-[calc(100vh-80px)]">
       
@@ -175,12 +185,22 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary }) {
         <div className="flex items-center justify-between bg-zinc-900 p-6 rounded-2xl border border-zinc-800 shadow-xl">
           <div className="flex items-center gap-4">
             <button onClick={goBack} className="p-2 bg-zinc-800 hover:bg-yellow-400 hover:text-black text-white rounded-full transition-colors"><ChevronLeft size={24} /></button>
-            <div className="w-14 h-14 bg-zinc-800 text-yellow-400 rounded-full flex items-center justify-center font-bold text-xl border-2 border-zinc-700">{client.name.charAt(0)}</div>
+            <div className="w-14 h-14 bg-zinc-800 text-yellow-400 rounded-full flex items-center justify-center font-bold text-xl border-2 border-zinc-700 shrink-0">{client.name.charAt(0)}</div>
             <div>
-              <h2 className="text-2xl font-bold text-white uppercase tracking-tight">{client.name}</h2>
+              <div className="flex flex-wrap items-center gap-3">
+                <h2 className="text-2xl font-bold text-white uppercase tracking-tight">{client.name}</h2>
+                {/* BOTÓN DE LINK DENTRO DEL DETALLE */}
+                <button 
+                  onClick={handleCopyInvite}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all shadow-sm ${copied ? 'bg-green-500/20 text-green-500 border border-green-500/30' : 'bg-zinc-800 text-zinc-400 hover:text-white border border-zinc-700'}`}
+                  title="Copiar Link de Invitación"
+                >
+                  {copied ? <><Check size={12}/> Copiado</> : <><Link size={12}/> Link Invitación</>}
+                </button>
+              </div>
               <div className="flex items-center gap-3 text-sm text-zinc-400 mt-1">
                 <span className="flex items-center gap-1 font-bold"><Dumbbell size={14} className="text-yellow-400"/> {client.plan}</span>
-                <span className="flex items-center gap-1"><CalendarIcon size={14}/> {client.startDate || '-'}</span>
+                <span className="text-[10px] uppercase font-bold tracking-widest">{client.studentUserId ? '✅ Vinculado' : '⏳ Pendiente de registro'}</span>
               </div>
             </div>
           </div>
@@ -276,7 +296,7 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary }) {
           <div className="p-4 border-b border-zinc-800 bg-zinc-950/50 flex items-center gap-3 shrink-0">
             <MessageSquare className="text-yellow-400" size={24}/>
             <div>
-              <h3 className="text-white font-bold uppercase tracking-widest">Chat con {client.name}</h3>
+              <h3 className="text-white font-bold uppercase tracking-widest">Conversación con {client.name}</h3>
               <p className="text-zinc-500 text-xs">Los mensajes de sistema y excusas también aparecerán aquí.</p>
             </div>
           </div>
@@ -314,7 +334,7 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary }) {
           <div className="bg-zinc-950 w-full max-w-md rounded-3xl border border-zinc-800 shadow-2xl relative overflow-hidden">
             <div className="flex justify-between items-center p-6 border-b border-zinc-800 bg-zinc-900/50">
               <h2 className="text-xl font-black text-white uppercase italic tracking-tighter">Asignar Entrenamiento</h2>
-              <button onClick={() => setIsAddingEx(false)} className="text-zinc-500 hover:text-white bg-zinc-800 p-2 rounded-full"><X size={20} /></button>
+              <button onClick={() => setIsAddingEx(false)} className="text-zinc-500 hover:text-white bg-zinc-800 p-2 rounded-full transition-colors"><X size={20} /></button>
             </div>
 
             <div className="p-6">
@@ -325,18 +345,18 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary }) {
 
               {addMode === 'single' ? (
                 <form onSubmit={handleSaveNewItem} className="space-y-4">
-                  <select required className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white text-sm focus:border-yellow-400 outline-none" value={newExData.name} onChange={handleSelectExerciseName}>
+                  <select required className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white text-sm focus:border-yellow-400 outline-none transition-colors" value={newExData.name} onChange={handleSelectExerciseName}>
                     <option value="">Elegir ejercicio...</option>
                     {exercisesLibrary.map(ex => <option key={ex.id} value={ex.name}>{ex.name}</option>)}
                   </select>
                   <div className="grid grid-cols-3 gap-3">
-                    <input type="number" placeholder="Sets" className="bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white text-sm text-center" value={newExData.sets} onChange={e => setNewExData({...newExData, sets: e.target.value})} />
-                    <input type="text" placeholder="Reps" className="bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white text-sm text-center" value={newExData.reps} onChange={e => setNewExData({...newExData, reps: e.target.value})} />
-                    <input type="text" placeholder="Peso" className="bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white text-sm text-center" value={newExData.weight} onChange={e => setNewExData({...newExData, weight: e.target.value})} />
+                    <input type="number" placeholder="Sets" className="bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white text-sm text-center transition-colors" value={newExData.sets} onChange={e => setNewExData({...newExData, sets: e.target.value})} />
+                    <input type="text" placeholder="Reps" className="bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white text-sm text-center transition-colors" value={newExData.reps} onChange={e => setNewExData({...newExData, reps: e.target.value})} />
+                    <input type="text" placeholder="Peso" className="bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white text-sm text-center transition-colors" value={newExData.weight} onChange={e => setNewExData({...newExData, weight: e.target.value})} />
                   </div>
                   
                   {/* SELECTOR RIR */}
-                  <select className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white text-sm focus:border-yellow-400 outline-none font-medium" value={newExData.rir} onChange={e => setNewExData({...newExData, rir: e.target.value})}>
+                  <select className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white text-sm focus:border-yellow-400 outline-none font-medium transition-colors" value={newExData.rir} onChange={e => setNewExData({...newExData, rir: e.target.value})}>
                     <option value="5">RIR 5 (Muy fácil / Calentamiento)</option>
                     <option value="4">RIR 4 (Fácil)</option>
                     <option value="3">RIR 3 (Moderado)</option>
@@ -349,7 +369,7 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary }) {
                 </form>
               ) : (
                 <form onSubmit={handleSaveNewItem} className="space-y-4">
-                  <select required className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white text-sm focus:border-yellow-400 outline-none" value={selectedRoutineId} onChange={(e) => setSelectedRoutineId(e.target.value)}>
+                  <select required className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white text-sm focus:border-yellow-400 outline-none transition-colors" value={selectedRoutineId} onChange={(e) => setSelectedRoutineId(e.target.value)}>
                     <option value="">Elegir plantilla...</option>
                     {routines.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
                   </select>
@@ -382,8 +402,8 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary }) {
               />
             </div>
             <div className="p-4 border-t border-zinc-800 bg-zinc-900 flex gap-3">
-              <button onClick={() => { setIsCloneModalOpen(false); setCloneDates([]); }} className="flex-1 py-4 text-zinc-400 font-bold uppercase text-xs rounded-xl bg-black">Cancelar</button>
-              <button onClick={handleSaveClone} disabled={cloneDates.length === 0} className="flex-1 py-4 bg-yellow-400 disabled:opacity-50 text-black font-black rounded-xl uppercase text-xs">Pegar en {cloneDates.length} días</button>
+              <button onClick={() => { setIsCloneModalOpen(false); setCloneDates([]); }} className="flex-1 py-4 text-zinc-400 font-bold uppercase text-xs rounded-xl bg-black border border-zinc-800 hover:bg-zinc-800 transition-colors">Cancelar</button>
+              <button onClick={handleSaveClone} disabled={cloneDates.length === 0} className="flex-1 py-4 bg-yellow-400 disabled:opacity-50 text-black font-black rounded-xl uppercase text-xs transition-colors">Pegar en {cloneDates.length} días</button>
             </div>
           </div>
         </div>
