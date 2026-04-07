@@ -1,224 +1,126 @@
 import React, { useState, useEffect } from 'react';
-import {
-  User,
-  Mail,
-  Lock,
-  ArrowRight,
-  Dumbbell,
-  CheckCircle,
-} from 'lucide-react';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
-import {
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
-  getAuth,
-} from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 import { db } from '../firebase';
+import { ShieldCheck, LogIn, Dumbbell } from 'lucide-react';
 
 export default function StudentRegistration({ inviteId, onRegisterSuccess }) {
-  const [clientName, setClientName] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [isLoginMode, setIsLoginMode] = useState(false); // Alternar entre registro y login
+  const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-
+  const [error, setError] = useState(null);
+  
   const auth = getAuth();
+  const provider = new GoogleAuthProvider();
 
-  // 1. Identificar al cliente por el ID del link
   useEffect(() => {
-    const fetchClientName = async () => {
+    const fetchInviteProfile = async () => {
       try {
         const docRef = doc(db, 'clients', inviteId);
         const docSnap = await getDoc(docRef);
+        
         if (docSnap.exists()) {
           const data = docSnap.data();
-          setClientName(data.name);
-          // Si el cliente ya tiene un usuario vinculado, sugerimos iniciar sesión
-          if (data.studentUserId) setIsLoginMode(true);
+          // Verificamos si el link ya fue usado por alguien más
+          if (data.studentUserId) {
+            setError("Este link de invitación ya ha sido utilizado o el alumno ya está registrado.");
+          } else {
+            setProfile(data);
+          }
         } else {
-          setError('Invitación no válida o expirada.');
+          setError("Invitación inválida o el perfil ha sido eliminado.");
         }
-      } catch (err) {
-        console.error(err);
-        setError('Error de conexión.');
-      } finally {
-        setLoading(false);
+      } catch (e) { 
+        console.error(e);
+        setError("Ocurrió un error al cargar la invitación."); 
+      } finally { 
+        setLoading(false); 
       }
     };
-    if (inviteId) fetchClientName();
+
+    if (inviteId) {
+      fetchInviteProfile();
+    }
   }, [inviteId]);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setError('');
-
+  const handleGoogleRegister = async () => {
     try {
-      let userCredential;
+      const result = await signInWithPopup(auth, provider);
+      const user = result.user;
 
-      if (isLoginMode) {
-        // Iniciar sesión existente
-        userCredential = await signInWithEmailAndPassword(
-          auth,
-          email,
-          password
-        );
-      } else {
-        // Crear cuenta nueva
-        userCredential = await createUserWithEmailAndPassword(
-          auth,
-          email,
-          password
-        );
+      // VINCULACIÓN: Guardamos el UID de Google y el Email en el documento que creó el entrenador
+      await updateDoc(doc(db, 'clients', inviteId), {
+        studentUserId: user.uid,
+        email: user.email, // Actualizamos con su email real de Google
+        linkedAt: new Date()
+      });
 
-        // VINCULACIÓN MÁGICA: Guardamos el ID del usuario en la ficha del cliente
-        const user = userCredential.user;
-        await updateDoc(doc(db, 'clients', inviteId), {
-          studentUserId: user.uid, // ¡Aquí conectamos al alumno con su ficha!
-          email: user.email, // Guardamos el mail por referencia
-        });
-      }
-
-      onRegisterSuccess(userCredential.user);
-    } catch (err) {
-      console.error(err);
-      if (err.code === 'auth/email-already-in-use') {
-        setError('Este correo ya está registrado. Prueba iniciar sesión.');
-        setIsLoginMode(true);
-      } else if (err.code === 'auth/wrong-password') {
-        setError('Contraseña incorrecta.');
-      } else {
-        setError('Ocurrió un error. Intenta nuevamente.');
-      }
-    } finally {
-      setLoading(false);
+      // Llamamos a la función de éxito para redirigirlo a su app
+      onRegisterSuccess();
+    } catch (e) { 
+      console.error(e); 
+      alert("Error al intentar iniciar sesión con Google. Por favor, intenta nuevamente."); 
     }
   };
 
-  if (loading && !clientName)
+  if (loading) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-yellow-400"></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-yellow-400"></div>
       </div>
     );
-
-  if (error && !clientName)
-    return (
-      <div className="min-h-screen bg-black text-white flex items-center justify-center p-4 text-center">
-        {error}
-      </div>
-    );
+  }
 
   return (
-    <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center p-4 font-sans relative overflow-hidden">
-      {/* Decoración */}
-      <div className="absolute top-0 left-0 w-full h-64 bg-gradient-to-b from-yellow-400/10 to-transparent pointer-events-none"></div>
-
-      <div className="w-full max-w-md z-10">
-        <div className="text-center mb-8">
-          <div className="inline-block p-3 bg-yellow-400 rounded-full mb-4 shadow-[0_0_25px_rgba(250,204,21,0.3)] animate-bounce-slow">
-            <Dumbbell className="w-8 h-8 text-black" />
-          </div>
-          <h1 className="text-3xl font-black text-white uppercase italic tracking-tighter">
-            Hola,{' '}
-            <span className="text-yellow-400">{clientName.split(' ')[0]}</span>
-          </h1>
-          <p className="text-zinc-400 mt-2 text-sm">
-            {isLoginMode
-              ? 'Ingresa para ver tu rutina.'
-              : 'Crea tu cuenta para acceder a tu entrenamiento personalizado.'}
-          </p>
+    <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-6 animate-in fade-in">
+      <div className="bg-zinc-900 border border-zinc-800 rounded-[2.5rem] p-8 w-full max-w-sm text-center shadow-2xl relative overflow-hidden">
+        
+        {/* Barra decorativa superior */}
+        <div className="absolute top-0 left-0 w-full h-1 bg-yellow-400"></div>
+        
+        <div className="bg-yellow-400/10 w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-6 text-yellow-400 shadow-inner">
+          <ShieldCheck size={48} />
         </div>
 
-        <div className="bg-zinc-900/80 backdrop-blur border border-zinc-800 rounded-2xl p-6 shadow-2xl">
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider ml-1">
-                Email
-              </label>
-              <div className="relative mt-1">
-                <Mail
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500"
-                  size={18}
-                />
-                <input
-                  type="email"
-                  required
-                  className="w-full bg-black border border-zinc-800 rounded-xl py-3 pl-10 pr-4 text-white focus:border-yellow-400 focus:outline-none transition-colors"
-                  placeholder="tu@email.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                />
+        {error ? (
+          <div className="animate-in slide-in-from-bottom-4">
+            <h2 className="text-white font-black uppercase text-xl mb-4 italic tracking-tighter">Ups...</h2>
+            <p className="text-zinc-500 text-sm mb-8 leading-relaxed px-4">{error}</p>
+            <button 
+              onClick={() => window.location.href = '/'} 
+              className="text-yellow-400 hover:text-yellow-300 font-bold uppercase text-xs tracking-widest transition-colors"
+            >
+              Volver al Inicio
+            </button>
+          </div>
+        ) : (
+          <div className="animate-in slide-in-from-bottom-4">
+            <h2 className="text-white font-black uppercase text-2xl mb-2 italic tracking-tighter">¡Bienvenido Atleta!</h2>
+            <p className="text-zinc-500 text-sm mb-8 leading-relaxed">
+              Estás a un paso de vincular tu cuenta con el perfil de <span className="text-white font-bold">{profile?.name}</span> en Ragnar Training.
+            </p>
+            
+            <div className="bg-black/50 border border-zinc-800 rounded-2xl p-4 mb-8 flex items-center gap-4 text-left shadow-inner">
+              <div className="bg-zinc-800 p-2 rounded-xl text-yellow-400">
+                <Dumbbell size={20}/>
+              </div>
+              <div>
+                <p className="text-[10px] text-zinc-500 uppercase font-black tracking-widest">Plan Asignado</p>
+                <p className="text-white font-bold text-sm uppercase">{profile?.plan || 'Plan Base'}</p>
               </div>
             </div>
 
-            <div>
-              <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider ml-1">
-                Contraseña
-              </label>
-              <div className="relative mt-1">
-                <Lock
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500"
-                  size={18}
-                />
-                <input
-                  type="password"
-                  required
-                  className="w-full bg-black border border-zinc-800 rounded-xl py-3 pl-10 pr-4 text-white focus:border-yellow-400 focus:outline-none transition-colors"
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-              </div>
-            </div>
-
-            {error && (
-              <div className="text-red-400 text-xs text-center bg-red-500/10 p-2 rounded">
-                {error}
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-yellow-400 hover:bg-yellow-300 text-black font-bold py-3.5 rounded-xl transition-all transform active:scale-95 flex items-center justify-center gap-2 shadow-lg shadow-yellow-400/20"
+            <button 
+              onClick={handleGoogleRegister}
+              className="w-full bg-white text-black hover:bg-zinc-200 font-black py-4 rounded-2xl uppercase tracking-widest flex items-center justify-center gap-3 active:scale-95 transition-all shadow-[0_0_20px_rgba(255,255,255,0.2)]"
             >
-              {loading ? (
-                'Procesando...'
-              ) : (
-                <>
-                  {isLoginMode ? 'Ingresar' : 'Activar Cuenta'}{' '}
-                  <ArrowRight size={18} />
-                </>
-              )}
+              <LogIn size={20}/> Unirme con Google
             </button>
-          </form>
-
-          <div className="mt-6 text-center">
-            <button
-              onClick={() => {
-                setIsLoginMode(!isLoginMode);
-                setError('');
-              }}
-              className="text-zinc-500 text-xs hover:text-white underline transition-colors"
-            >
-              {isLoginMode
-                ? '¿No tienes cuenta? Regístrate'
-                : '¿Ya tienes cuenta? Inicia Sesión'}
-            </button>
+            
+            <p className="text-zinc-600 text-[10px] uppercase font-bold mt-6 tracking-widest">
+              Usa tu cuenta personal de Google
+            </p>
           </div>
-        </div>
-
-        <div className="mt-8 flex justify-center gap-2 text-zinc-600 text-[10px] uppercase tracking-widest">
-          <span className="flex items-center gap-1">
-            <CheckCircle size={10} /> Planificación
-          </span>
-          <span>•</span>
-          <span className="flex items-center gap-1">
-            <CheckCircle size={10} /> Seguimiento
-          </span>
-        </div>
+        )}
       </div>
     </div>
   );
