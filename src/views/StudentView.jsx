@@ -287,7 +287,7 @@ export default function StudentView({ clientId }) {
       });
       await addDoc(collection(db, 'trainerNotifications'), {
         type: 'workout_completed', 
-        clientId: client.name, 
+        clientId: client.id, 
         clientName: client.name, 
         date: currentDateId, 
         read: false, 
@@ -339,7 +339,7 @@ export default function StudentView({ clientId }) {
   return (
     <div className="min-h-screen bg-zinc-950 text-white font-sans flex flex-col relative overflow-x-hidden">
       
-      {/* MODAL PAGO PENDIENTE */}
+      {/* MODAL DE DEUDA DE PAGO */}
       {showPaymentModal && (
         <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-md flex items-center justify-center p-6 animate-in fade-in">
           <div className="bg-zinc-900 border border-red-500/30 rounded-3xl p-8 w-full max-w-sm text-center shadow-2xl">
@@ -348,7 +348,7 @@ export default function StudentView({ clientId }) {
             </div>
             <h2 className="text-3xl font-black text-white uppercase italic tracking-tighter mb-2">Deuda del Mes</h2>
             <p className="text-zinc-400 text-sm mb-8 leading-relaxed">
-              Tu acceso está limitado. Para ver rutinas, regulariza el pago de <span className="text-white font-bold">{date.toLocaleString('es-ES', { month: 'long' })}</span>.
+              Tu acceso está limitado. Para ver rutinas y navegar el calendario, regulariza el pago de <span className="text-white font-bold">{date.toLocaleString('es-ES', { month: 'long' })}</span>.
             </p>
             <div className="bg-black/50 rounded-2xl p-5 mb-8 border border-zinc-800 text-left">
               <p className="text-[10px] text-zinc-500 uppercase font-black mb-1 tracking-widest">Alias Mercado Pago:</p>
@@ -412,7 +412,7 @@ export default function StudentView({ clientId }) {
               Salón Ragnar
             </button>
             <button onClick={() => { setCurrentView('chat'); setIsMenuOpen(false); }} className={`text-left flex items-center gap-4 ${currentView === 'chat' ? 'text-yellow-400' : 'text-zinc-600'}`}>
-              Chat {unreadCount > 0 && <span className="bg-red-500 text-white text-xs px-2 py-1 rounded-full not-italic font-sans">{unreadCount}</span>}
+              Chat Directo {unreadCount > 0 && <span className="bg-red-500 text-white text-xs px-2 py-1 rounded-full not-italic font-sans">{unreadCount}</span>}
             </button>
             <button onClick={() => { setCurrentView('profile'); setIsMenuOpen(false); }} className={`text-left ${currentView === 'profile' ? 'text-yellow-400' : 'text-zinc-600'}`}>
               Mi Perfil & Pago
@@ -426,7 +426,7 @@ export default function StudentView({ clientId }) {
       )}
 
       {/* HEADER PRINCIPAL */}
-      <div className="bg-yellow-400 text-black p-4 pb-10 rounded-b-[3rem] shadow-xl relative z-10">
+      <div className="bg-yellow-400 text-black p-4 pb-10 rounded-b-[3rem] shadow-xl relative z-10 shrink-0">
          <div className="flex justify-between items-center max-w-2xl mx-auto">
             <div className="flex items-center gap-4">
                <div className="w-12 h-12 bg-black rounded-2xl flex items-center justify-center text-yellow-400 shadow-lg">
@@ -450,7 +450,7 @@ export default function StudentView({ clientId }) {
          </div>
       </div>
 
-      <main className="flex-1 max-w-2xl mx-auto w-full px-4 -mt-6 pb-40 relative z-20">
+      <main className="flex-1 max-w-2xl mx-auto w-full px-4 -mt-6 pb-40 relative z-20 flex flex-col">
         
         {/* --- VISTA 0: CALENDARIO (HOME) --- */}
         {currentView === 'calendar' && (
@@ -489,10 +489,13 @@ export default function StudentView({ clientId }) {
 
         {/* --- VISTA 1: RUTINA (DETALLE) --- */}
         {currentView === 'workout' && (
-          <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
+          <div className="space-y-6 animate-in slide-in-from-right-4 duration-300 pb-10">
             
             <div className="flex items-center gap-4 px-2 mb-2">
-                <button onClick={() => setCurrentView('calendar')} className="w-10 h-10 bg-zinc-900 border border-zinc-800 rounded-full flex items-center justify-center text-white shadow-lg">
+                <button 
+                  onClick={() => setCurrentView('calendar')} 
+                  className="w-10 h-10 bg-zinc-900 border border-zinc-800 rounded-full flex items-center justify-center text-white hover:text-yellow-400 hover:border-yellow-400 transition-colors shadow-lg"
+                >
                   <ChevronLeft size={24}/>
                 </button>
                 <div>
@@ -586,9 +589,9 @@ export default function StudentView({ clientId }) {
                               />
                               <button 
                                 onClick={() => toggleSetComplete(exIdx, sIdx)} 
-                                className={`col-span-4 mt-1 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all ${isDone ? 'bg-green-500 text-black shadow-lg' : 'bg-zinc-800 text-zinc-400 hover:text-white'}`}
+                                className={`col-span-4 mt-1 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all ${isDone ? 'bg-green-500 text-black shadow-[0_0_10px_rgba(34,197,94,0.3)]' : 'bg-zinc-800 text-zinc-400 hover:text-white'}`}
                               >
-                                {isDone ? <><CheckCircle size={14}/> Lista</> : 'Completar Serie'}
+                                {isDone ? <><CheckCircle size={14}/> Completada</> : 'Marcar Completada'}
                               </button>
                             </div>
                           );
@@ -597,9 +600,10 @@ export default function StudentView({ clientId }) {
                     </div>
                   ))
                 ) : (
-                  <div className="text-center py-20 bg-zinc-900/30 rounded-[2rem] border border-dashed border-zinc-800 flex flex-col items-center">
+                  <div className="text-center py-16 bg-zinc-900/30 rounded-[2rem] border border-dashed border-zinc-800 flex flex-col items-center">
                     <Dumbbell className="w-12 h-12 text-zinc-800 mb-4 opacity-30"/>
-                    <p className="text-zinc-500 font-bold uppercase tracking-widest text-sm">Sin rutina asignada</p>
+                    <p className="text-zinc-500 font-bold uppercase tracking-widest text-sm">Día de Descanso</p>
+                    <p className="text-zinc-600 text-xs mt-2 max-w-[200px]">No tienes ejercicios asignados para esta fecha.</p>
                   </div>
                 )}
             </div>
@@ -607,9 +611,9 @@ export default function StudentView({ clientId }) {
             {dailySession.length > 0 && !isSessionFinalized && hasPaidMonth && (
               <button 
                 onClick={handleFinishWorkout} 
-                className="w-full bg-green-500 text-black font-black py-5 mt-6 rounded-[2rem] uppercase tracking-widest shadow-xl flex justify-center items-center gap-2"
+                className="w-full bg-green-500 text-black font-black py-5 mt-6 rounded-[2rem] uppercase tracking-widest shadow-[0_0_20px_rgba(34,197,94,0.2)] active:scale-95 transition-all text-sm flex justify-center items-center gap-2"
               >
-                <Trophy size={20}/> Finalizar
+                <Trophy size={20}/> Finalizar Entrenamiento
               </button>
             )}
           </div>
@@ -620,7 +624,7 @@ export default function StudentView({ clientId }) {
 
         {/* --- VISTA: MI ESTADÍSTICA --- */}
         {currentView === 'stats' && (
-          <div className="space-y-6">
+          <div className="space-y-6 animate-in fade-in">
             <ProgressChart clientId={client?.id} />
           </div>
         )}
@@ -628,41 +632,54 @@ export default function StudentView({ clientId }) {
         {/* --- VISTA: CHAT --- */}
         {currentView === 'chat' && (
           <div className="bg-zinc-900 rounded-[2rem] border border-zinc-800 flex flex-col h-[65vh] shadow-xl overflow-hidden animate-in fade-in">
-             <div className="p-4 border-b border-zinc-800 bg-zinc-950/50 flex items-center gap-3 shrink-0">
-               <MessageSquare className="text-yellow-400" size={24}/>
-               <h3 className="text-white font-bold uppercase tracking-widest text-sm">Chat Coach</h3>
-             </div>
-             
-             <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-zinc-950/20">
-                {messages.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center h-full text-zinc-600 opacity-50">
-                    <MessageSquare size={48} className="mb-4" />
-                    <p>Di hola guerrero.</p>
-                  </div>
-                ) : (
-                  messages.map(msg => (
-                    <div key={msg.id} className={`flex ${msg.sender === 'student' ? 'justify-end' : 'justify-start'}`}>
-                      <div className={`max-w-[80%] p-4 rounded-2xl text-sm ${msg.sender === 'student' ? 'bg-yellow-400 text-black rounded-tr-none' : 'bg-zinc-800 text-white rounded-tl-none border border-zinc-700'}`}>
+            <div className="p-4 border-b border-zinc-800 bg-zinc-950/50 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3">
+                <MessageSquare className="text-yellow-400" size={24}/>
+                <h3 className="text-white font-bold uppercase tracking-widest text-sm">Chat con Coach</h3>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-zinc-950/20 custom-scrollbar">
+              {messages.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full text-zinc-600 opacity-50">
+                  <MessageSquare size={48} className="mb-4" />
+                  <p>Mándale un mensaje a tu entrenador.</p>
+                </div>
+              ) : (
+                messages.map(msg => {
+                  const isStudent = msg.sender === 'student';
+                  const isSystem = msg.sender === 'system';
+                  return (
+                    <div key={msg.id} className={`flex ${isStudent ? 'justify-end' : 'justify-start'}`}>
+                      <div className={`max-w-[80%] p-4 rounded-2xl text-sm ${isStudent ? 'bg-yellow-400 text-black rounded-tr-none' : isSystem ? 'bg-red-500/10 border border-red-500/20 text-red-200 rounded-tl-none font-bold' : 'bg-zinc-800 text-white rounded-tl-none border border-zinc-700'}`}>
                         {msg.text}
+                        <span className="block text-[10px] opacity-60 mt-2 text-right">
+                          {msg.createdAt?.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                        </span>
                       </div>
                     </div>
-                  ))
-                )}
-                <div ref={messagesEndRef} />
-             </div>
-             
-             <form onSubmit={handleSendMessage} className="p-3 bg-zinc-950 border-t border-zinc-800 flex gap-2 shrink-0">
-               <input 
-                 type="text" 
-                 placeholder="Escribe..." 
-                 className="flex-1 bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3 text-white outline-none" 
-                 value={newMessage} 
-                 onChange={e => setNewMessage(e.target.value)} 
-               />
-               <button type="submit" className="bg-yellow-400 text-black p-3 rounded-xl">
-                 <Send size={20}/>
-               </button>
-             </form>
+                  );
+                })
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+
+            <form onSubmit={handleSendMessage} className="p-3 bg-zinc-950 border-t border-zinc-800 flex gap-2 shrink-0">
+              <input 
+                type="text" 
+                placeholder="Escribe aquí..." 
+                className="flex-1 bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3 text-white focus:border-yellow-400 outline-none text-sm" 
+                value={newMessage} 
+                onChange={e => setNewMessage(e.target.value)} 
+              />
+              <button 
+                type="submit" 
+                disabled={!newMessage.trim()} 
+                className="bg-yellow-400 disabled:opacity-50 text-black p-3 rounded-xl transition-colors"
+              >
+                <Send size={20}/>
+              </button>
+            </form>
           </div>
         )}
 
@@ -674,12 +691,12 @@ export default function StudentView({ clientId }) {
                  <User size={48}/>
                </div>
                <h2 className="text-2xl font-black uppercase text-white">{client.name}</h2>
-               <p className="text-zinc-500 text-xs uppercase tracking-widest">{client.email}</p>
+               <p className="text-zinc-500 text-xs font-bold uppercase tracking-widest">{client.email}</p>
              </div>
              
              <div className="bg-zinc-900 rounded-[2rem] p-6 border border-zinc-800 shadow-xl">
-               <h3 className="text-white font-bold uppercase mb-6 flex items-center gap-2">
-                 <CreditCard size={20} className="text-yellow-400"/> Suscripción
+               <h3 className="text-white font-bold uppercase mb-6 flex items-center gap-2 tracking-tighter">
+                 <CreditCard size={20} className="text-yellow-400"/> Mi Suscripción
                </h3>
                
                <div className="space-y-4">
@@ -693,9 +710,20 @@ export default function StudentView({ clientId }) {
                     </span>
                   </div>
                   
+                  {!hasPaidMonth && (
+                    <div className="bg-yellow-400/5 border border-yellow-400/20 p-5 rounded-2xl">
+                      <p className="text-xs text-yellow-400/80 font-medium leading-relaxed">Para informar tu pago, realiza la transferencia al alias indicado abajo y envía el comprobante a tu entrenador por el Chat.</p>
+                    </div>
+                  )}
+                  
+                  <div className="bg-black/40 p-5 rounded-2xl border border-zinc-800">
+                    <p className="text-[10px] text-zinc-500 uppercase font-black mb-1">Datos de Transferencia:</p>
+                    <p className="font-mono font-bold text-yellow-400 text-lg select-all cursor-pointer">{trainerSettings.alias || 'SIN_ALIAS'}</p>
+                  </div>
+                  
                   <button 
-                    onClick={() => window.open('https://www.mercadopago.com.ar/', '_blank')} 
-                    className="w-full bg-yellow-400 text-black font-black py-5 rounded-2xl uppercase tracking-widest flex justify-center items-center gap-2 shadow-lg"
+                    onClick={handleGoToPay} 
+                    className="w-full bg-yellow-400 text-black font-black py-5 rounded-2xl uppercase tracking-widest shadow-lg active:scale-95 transition-all flex justify-center items-center gap-2"
                   >
                     Ir a Mercado Pago <ExternalLink size={20}/>
                   </button>
@@ -744,29 +772,29 @@ export default function StudentView({ clientId }) {
       )}
 
       {/* NAV BAR INFERIOR (5 Botones) */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-zinc-950/90 backdrop-blur-xl border-t border-zinc-800 p-3 pb-6 flex justify-between items-center z-[40]">
+      <nav className="fixed bottom-0 left-0 right-0 bg-zinc-950/95 backdrop-blur-md border-t border-zinc-800 p-2 pb-6 flex justify-between items-center z-[40]">
         <button 
           onClick={() => setCurrentView('calendar')} 
           className={`flex flex-col items-center justify-center gap-1.5 w-1/5 transition-colors ${['calendar', 'workout'].includes(currentView) ? 'text-yellow-400' : 'text-zinc-500'}`}
         >
-          <CalendarIcon size={22}/>
-          <span className="text-[8px] font-black uppercase tracking-wider">Agenda</span>
+          <CalendarIcon size={20}/>
+          <span className="text-[9px] font-black uppercase tracking-wider mt-1">Agenda</span>
         </button>
         
         <button 
           onClick={() => setCurrentView('community')} 
           className={`flex flex-col items-center justify-center gap-1.5 w-1/5 transition-colors ${currentView === 'community' ? 'text-yellow-400' : 'text-zinc-500'}`}
         >
-          <Users size={22}/>
-          <span className="text-[8px] font-black uppercase tracking-wider">Salón</span>
+          <Users size={20}/>
+          <span className="text-[9px] font-black uppercase tracking-wider mt-1">Salón</span>
         </button>
         
         <button 
           onClick={() => setCurrentView('stats')} 
           className={`flex flex-col items-center justify-center gap-1.5 w-1/5 transition-colors ${currentView === 'stats' ? 'text-yellow-400' : 'text-zinc-500'}`}
         >
-          <TrendingUp size={22}/>
-          <span className="text-[8px] font-black uppercase tracking-wider">Estadística</span>
+          <TrendingUp size={20}/>
+          <span className="text-[9px] font-black uppercase tracking-wider mt-1">Progreso</span>
         </button>
         
         <button 
@@ -774,18 +802,18 @@ export default function StudentView({ clientId }) {
           className={`flex flex-col items-center justify-center gap-1.5 w-1/5 relative transition-colors ${currentView === 'chat' ? 'text-yellow-400' : 'text-zinc-500'}`}
         >
           <div className="relative">
-            <MessageSquare size={22}/>
+            <MessageSquare size={20}/>
             {unreadCount > 0 && <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border border-black"></span>}
           </div>
-          <span className="text-[8px] font-black uppercase tracking-wider">Chat</span>
+          <span className="text-[9px] font-black uppercase tracking-wider mt-1">Chat</span>
         </button>
         
         <button 
           onClick={() => setCurrentView('profile')} 
           className={`flex flex-col items-center justify-center gap-1.5 w-1/5 transition-colors ${currentView === 'profile' ? 'text-yellow-400' : 'text-zinc-500'}`}
         >
-          <User size={22}/>
-          <span className="text-[8px] font-black uppercase tracking-wider">Perfil</span>
+          <User size={20}/>
+          <span className="text-[9px] font-black uppercase tracking-wider mt-1">Perfil</span>
         </button>
       </nav>
 
