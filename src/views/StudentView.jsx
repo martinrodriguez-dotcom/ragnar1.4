@@ -13,7 +13,6 @@ import CommunityView from './CommunityView';
 import ProgressChart from '../components/ProgressChart';
 
 export default function StudentView({ clientId }) {
-  // --- ESTADOS DE DATOS ---
   const [client, setClient] = useState(null);
   const [trainerSettings, setTrainerSettings] = useState({ alias: '', plans: [] });
   const [date, setDate] = useState(new Date());
@@ -22,26 +21,21 @@ export default function StudentView({ clientId }) {
   const [allSessionsIds, setAllSessionsIds] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // --- ESTADOS DE PAGO ---
   const [hasPaidMonth, setHasPaidMonth] = useState(true); 
   const [showPaymentModal, setShowPaymentModal] = useState(false);
 
-  // --- ESTADOS DE NAVEGACIÓN ---
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [currentView, setCurrentView] = useState('calendar'); // 'calendar' es la vista principal
+  const [currentView, setCurrentView] = useState('calendar'); 
 
-  // --- CHAT Y NOTIFICACIONES ---
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [unreadCount, setUnreadCount] = useState(0);
   const messagesEndRef = useRef(null);
 
-  // --- CONTROL DE INASISTENCIA ---
   const [missedWorkout, setMissedWorkout] = useState(null);
   const [missedReason, setMissedReason] = useState('');
 
-  // --- CRONÓMETRO DE DESCANSO PERSONALIZADO ---
-  const [restTime, setRestTime] = useState(90); // Valor por defecto
+  const [restTime, setRestTime] = useState(90); 
   const [timerEndTime, setTimerEndTime] = useState(null);
   const [timeLeft, setTimeLeft] = useState(0);
 
@@ -59,17 +53,18 @@ export default function StudentView({ clientId }) {
   const currentDateId = formatDateId(date);
   const currentMonthId = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
 
-  // 1. Cargar Datos, Estado de Pago y Preferencia de Descanso
   useEffect(() => {
     const fetchData = async () => {
       try {
         const docRef = doc(db, 'clients', clientId);
         const docSnap = await getDoc(docRef);
+        let clientData = null;
+        
         if (docSnap.exists()) {
-          const data = docSnap.data();
-          setClient({ id: docSnap.id, ...data });
-          if (data.preferredRestTime) {
-            setRestTime(data.preferredRestTime);
+          clientData = docSnap.data();
+          setClient({ id: docSnap.id, ...clientData });
+          if (clientData.preferredRestTime) {
+            setRestTime(clientData.preferredRestTime);
           }
         }
 
@@ -78,9 +73,22 @@ export default function StudentView({ clientId }) {
           setTrainerSettings(settingsSnap.data());
         }
 
+        // --- LÓGICA INTELIGENTE DE PAGO SINCRONIZADO ---
         const paymentRef = doc(db, 'clients', clientId, 'payments', currentMonthId);
         const paymentSnap = await getDoc(paymentRef);
-        setHasPaidMonth(paymentSnap.exists() && paymentSnap.data().status === 'paid');
+        let isPaid = paymentSnap.exists() && paymentSnap.data().status === 'paid';
+
+        // Si no se encuentra un registro de pago formal, verificamos la "Fecha de Cobro" (startDate)
+        if (!isPaid && clientData?.startDate) {
+          // Extraemos "YYYY-MM" de la fecha asignada por el coach
+          const startMonth = clientData.startDate.substring(0, 7); 
+          // Si el mes actual es igual o anterior al mes de la fecha de cobro, el alumno está al día
+          if (startMonth === currentMonthId || currentMonthId < startMonth) {
+            isPaid = true;
+          }
+        }
+
+        setHasPaidMonth(isPaid);
       } catch (e) { 
         console.error(e); 
       } finally { 
@@ -90,7 +98,6 @@ export default function StudentView({ clientId }) {
     if (clientId) fetchData();
   }, [clientId, currentMonthId]);
 
-  // 2. Verificar si faltó ayer (Inasistencia)
   useEffect(() => {
     if (!client) return;
     const checkYesterday = async () => {
@@ -110,7 +117,6 @@ export default function StudentView({ clientId }) {
     checkYesterday();
   }, [client]);
 
-  // 3. Escuchar Sesiones y Rutina en tiempo real
   useEffect(() => {
     if (!client) return;
     const unsubSessions = onSnapshot(collection(db, 'clients', client.id, 'sessions'), (snapshot) => {
@@ -131,7 +137,6 @@ export default function StudentView({ clientId }) {
     return () => { unsubSessions(); unsubDaily(); };
   }, [date, client, currentDateId]);
 
-  // 4. Cargar Chat y Notificaciones
   useEffect(() => {
     if (!client) return;
     const q = query(collection(db, 'clients', client.id, 'messages'), orderBy('createdAt', 'asc'));
@@ -144,7 +149,6 @@ export default function StudentView({ clientId }) {
     return () => unsubscribe();
   }, [client]);
 
-  // 5. Marcar mensajes como leídos al abrir el chat
   useEffect(() => {
     if (currentView === 'chat' && unreadCount > 0 && client) {
       messages.forEach(async (msg) => {
@@ -155,7 +159,6 @@ export default function StudentView({ clientId }) {
     }
   }, [currentView, messages, unreadCount, client]);
 
-  // --- LÓGICA DEL CRONÓMETRO DE DESCANSO ---
   const playTimerSound = () => {
     if ('vibrate' in navigator) navigator.vibrate([200, 100, 200]);
     try {
@@ -194,8 +197,6 @@ export default function StudentView({ clientId }) {
 
     return () => clearInterval(interval);
   }, [timerEndTime]);
-
-  // --- ACCIONES ---
 
   const updatePreferredRest = async (val) => {
     const newRest = parseInt(val) || 0;
