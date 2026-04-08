@@ -77,7 +77,7 @@ export default function NotificationsView() {
     await batch.commit();
   };
 
-  // --- HELPERS VISUALES ---
+  // --- HELPERS VISUALES Y TRADUCCIONES ---
 
   const getIcon = (type) => {
     switch (type) {
@@ -85,6 +85,16 @@ export default function NotificationsView() {
       case 'missed_workout': return <AlertTriangle className="text-red-500" size={20} />;
       case 'new_message': return <MessageSquare className="text-yellow-400" size={20} />;
       default: return <Bell className="text-blue-500" size={20} />;
+    }
+  };
+
+  // Función para traducir las claves de Firebase al español
+  const getNotifLabel = (type) => {
+    switch (type) {
+      case 'workout_completed': return 'Rutina Completada';
+      case 'missed_workout': return 'Ausencia Justificada';
+      case 'new_message': return 'Nuevo Mensaje';
+      default: return 'Notificación';
     }
   };
 
@@ -165,8 +175,9 @@ export default function NotificationsView() {
                        <h3 className={`font-black uppercase tracking-tight text-lg ${!n.read ? 'text-white' : 'text-zinc-500'}`}>
                          {n.clientName}
                        </h3>
+                       {/* ETIQUETA TRADUCIDA AL ESPAÑOL */}
                        <span className={`text-[10px] px-2 py-0.5 rounded font-black uppercase ${n.type === 'workout_completed' ? 'bg-green-500/10 text-green-500' : n.type === 'missed_workout' ? 'bg-red-500/10 text-red-500' : 'bg-yellow-500/10 text-yellow-500'}`}>
-                         {n.type.replace('_', ' ')}
+                         {getNotifLabel(n.type)}
                        </span>
                     </div>
 
@@ -178,7 +189,7 @@ export default function NotificationsView() {
 
                     <div className="flex items-center gap-4 mt-3">
                        <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest flex items-center gap-1">
-                         <Clock size={12}/> {n.createdAt?.toDate().toLocaleString([], {day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit'})}
+                         <Clock size={12}/> {n.createdAt?.toDate().toLocaleString('es-ES', {day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit'})}
                        </p>
                        {n.date && (
                          <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">
