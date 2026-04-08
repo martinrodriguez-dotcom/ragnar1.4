@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { Search, Plus, Edit, Trash2, Video, X, Dumbbell } from 'lucide-react';
 
-// El truco de seguridad: exercises = [] evita el error de "undefined"
-export default function ExercisesView({ exercises = [], onAddExercise, onUpdateExercise, onDeleteExercise }) {
+// Restaurado el prop original: exercisesLibrary
+export default function ExercisesView({ exercisesLibrary = [], onAddExercise, onUpdateExercise, onDeleteExercise }) {
   const [searchTerm, setSearchTerm] = useState('');
   
   // Estados para el Modal
@@ -10,10 +10,9 @@ export default function ExercisesView({ exercises = [], onAddExercise, onUpdateE
   const [editingExercise, setEditingExercise] = useState(null);
   const [formData, setFormData] = useState({ name: '', videoUrl: '', category: 'Fuerza' });
 
-  // Aseguramos que siempre sea un array antes de filtrar
-  const safeExercises = Array.isArray(exercises) ? exercises : [];
+  // Nos aseguramos de que no de error "filter of undefined"
+  const safeExercises = Array.isArray(exercisesLibrary) ? exercisesLibrary : [];
 
-  // Filtrado de la lista por búsqueda
   const filteredExercises = safeExercises.filter(ex => 
     ex.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     ex.category?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -46,7 +45,6 @@ export default function ExercisesView({ exercises = [], onAddExercise, onUpdateE
   return (
     <div className="max-w-6xl mx-auto animate-in fade-in pb-10">
       
-      {/* HEADER Y BUSCADOR */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
         <div>
           <h2 className="text-3xl font-black text-white uppercase italic tracking-tighter">Librería de Ejercicios</h2>
@@ -75,7 +73,6 @@ export default function ExercisesView({ exercises = [], onAddExercise, onUpdateE
         </div>
       </div>
 
-      {/* LISTADO DE EJERCICIOS */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {filteredExercises.length > 0 ? (
           filteredExercises.map(ex => (
@@ -123,7 +120,6 @@ export default function ExercisesView({ exercises = [], onAddExercise, onUpdateE
         )}
       </div>
 
-      {/* MODAL CREAR / EDITAR */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 animate-in fade-in">
           <div className="bg-zinc-950 w-full max-w-md rounded-[2rem] border border-zinc-800 shadow-2xl relative overflow-hidden">
@@ -190,7 +186,7 @@ export default function ExercisesView({ exercises = [], onAddExercise, onUpdateE
                   type="submit" 
                   className="flex-1 bg-yellow-400 hover:bg-yellow-300 text-black font-black py-4 rounded-xl uppercase text-xs tracking-widest transition-colors shadow-lg shadow-yellow-400/20"
                 >
-                  {editingExercise ? 'Guardar Cambios' : 'Crear Ejercicio'}
+                  {editingExercise ? 'Guardar' : 'Crear'}
                 </button>
               </div>
             </form>
