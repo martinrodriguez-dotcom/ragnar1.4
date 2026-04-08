@@ -20,16 +20,17 @@ export function Sidebar({ activeView, navigateTo, notificationCount = 0 }) {
     setIsOpen(false);
   };
 
+  // --- NUEVO ORDEN DEL MENÚ ---
   const menuItems = [
     { id: 'dashboard', label: 'Panel Principal', icon: <LayoutDashboard size={20} /> },
-    { id: 'clients', label: 'Mis Atletas', icon: <Users size={20} /> },
-    { id: 'calendar', label: 'Agenda', icon: <Calendar size={20} /> },
-    { id: 'payments', label: 'Cobros', icon: <CreditCard size={20} /> },
-    { id: 'routines', label: 'Plantillas', icon: <FolderSync size={20} /> },
-    { id: 'exercises', label: 'Ejercicios', icon: <Dumbbell size={20} /> },
-    { id: 'community', label: 'Salón Ragnar', icon: <MessageSquare size={20} /> },
     { id: 'notifications', label: 'Notificaciones', icon: <Bell size={20} />, badge: notificationCount },
-    { id: 'settings', label: 'Configuración', icon: <Settings size={20} /> },
+    { id: 'community', label: 'Salón Ragnar', icon: <MessageSquare size={20} /> },
+    { id: 'clients', label: 'Mis Atletas', icon: <Users size={20} /> },
+    { id: 'exercises', label: 'Ejercicios', icon: <Dumbbell size={20} /> },
+    { id: 'routines', label: 'Rutinas', icon: <FolderSync size={20} /> },
+    { id: 'payments', label: 'Cobros', icon: <CreditCard size={20} /> },
+    { id: 'calendar', label: 'Agenda', icon: <Calendar size={20} /> },
+    { id: 'settings', label: 'Configuraciones', icon: <Settings size={20} /> },
   ];
 
   return (
@@ -58,7 +59,6 @@ export function Sidebar({ activeView, navigateTo, notificationCount = 0 }) {
       >
         {/* LOGO ORIGINAL RESTAURADO */}
         <div className="p-6 border-b border-zinc-800 flex items-center gap-4 shrink-0">
-          {/* Reemplaza src="/logo.png" con la ruta exacta de tu logo si es distinta */}
           <img 
             src="/logo.png" 
             alt="Logo Ragnar" 
