@@ -19,6 +19,10 @@ import ClientDetailView from './views/ClientDetailView';
 import StudentView from './views/StudentView';
 import StudentRegistration from './views/StudentRegistration';
 
+// Asegúrate de tener estos archivos creados en tu carpeta views
+import PaymentsView from './views/PaymentsView'; 
+import CalendarView from './views/CalendarView'; 
+
 export default function App() {
   // --- ESTADOS DE AUTENTICACIÓN ---
   const [user, setUser] = useState(null);
@@ -75,7 +79,7 @@ export default function App() {
 
   // 2. CARGA DE DATOS DEL COACH (Cerebro Global en Tiempo Real)
   useEffect(() => {
-    // Si no es el coach, no escuchamos toda la base de datos
+    // Si no es el coach, no escuchamos toda la base de datos general
     if (userRole !== 'coach') return;
 
     // Escuchar Atletas
@@ -141,7 +145,6 @@ export default function App() {
     if (!window.confirm('¿Estás seguro de eliminar este atleta? Perderá el acceso y se borrarán sus datos.')) return;
     try {
       await deleteDoc(doc(db, 'clients', clientId));
-      // Si justo estaba viendo a este cliente, lo devuelvo a la lista
       if (selectedClient && selectedClient.id === clientId) {
         setCurrentView('clients');
         setSelectedClient(null);
@@ -157,7 +160,7 @@ export default function App() {
   };
 
   // Cálculo total de notificaciones para la campana roja del menú
-  const unreadSystemCount = systemNotifications.filter(n => !n.read).length;
+  const unreadSystemCount = systemNotifications.filter(n => !n.read && !n.deleted).length;
   const totalNotifications = unreadMessagesCount + unreadSystemCount;
 
   // --- RENDERIZADO CONDICIONAL DE PANTALLAS ---
@@ -170,7 +173,7 @@ export default function App() {
     );
   }
 
-  // 1. FLUJO DE INVITACIÓN (Si hay un link de invitación y el alumno no está logueado)
+  // 1. FLUJO DE INVITACIÓN
   if (inviteId && userRole !== 'student') {
     return (
       <StudentRegistration 
@@ -180,7 +183,7 @@ export default function App() {
     );
   }
 
-  // 2. PANTALLA DE LOGIN GENERAL (Para el Coach y Alumnos que entran directo)
+  // 2. PANTALLA DE LOGIN GENERAL
   if (!user) {
     return <LoginScreen />;
   }
@@ -190,7 +193,7 @@ export default function App() {
     return <StudentView clientId={studentData.id} />;
   }
 
-  // 4. VISTA EXCLUSIVA DEL ENTRENADOR (Dashboard)
+  // 4. VISTA EXCLUSIVA DEL ENTRENADOR
   return (
     <div className="flex h-screen bg-zinc-950 text-white font-sans overflow-hidden">
       
@@ -203,7 +206,13 @@ export default function App() {
       
       {/* Contenedor Principal con Scroll */}
       <main className="flex-1 overflow-y-auto bg-zinc-950 p-4 md:p-8 custom-scrollbar relative">
-        {currentView === 'dashboard' && <DashboardView clients={clients} navigateTo={navigateTo} />}
+        
+        {currentView === 'dashboard' && (
+          <DashboardView 
+            clients={clients} 
+            navigateTo={navigateTo} 
+          />
+        )}
         
         {currentView === 'clients' && (
           <ClientsView 
@@ -242,7 +251,7 @@ export default function App() {
         )}
         
         {currentView === 'notifications' && (
-          <NotificationsView /> // Ya lee sus propios datos en tiempo real internamente
+          <NotificationsView /> 
         )}
 
         {currentView === 'community' && (
@@ -251,6 +260,19 @@ export default function App() {
             coachName="Coach Ragnar" 
           />
         )}
+
+        {currentView === 'payments' && (
+          <PaymentsView 
+            clients={clients} 
+          />
+        )}
+
+        {currentView === 'calendar' && (
+          <CalendarView 
+            clients={clients} 
+          />
+        )}
+
       </main>
 
     </div>
