@@ -1,29 +1,33 @@
 import React, { useState } from 'react';
-import { Search, Plus, Trash2, Edit2, Video, Dumbbell, X, Save } from 'lucide-react';
+import { Search, Plus, Edit, Trash2, Video, X, Dumbbell } from 'lucide-react';
 
-export default function ExercisesView({ exercises, onAddExercise, onUpdateExercise, onDeleteExercise }) {
+// El truco de seguridad: exercises = [] evita el error de "undefined"
+export default function ExercisesView({ exercises = [], onAddExercise, onUpdateExercise, onDeleteExercise }) {
   const [searchTerm, setSearchTerm] = useState('');
-  const [isModalOpen, setIsModalOpen] = useState(false);
   
-  // NUEVO: Estado para saber si estamos editando un ejercicio existente
+  // Estados para el Modal
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingExercise, setEditingExercise] = useState(null);
-  const [formData, setFormData] = useState({ name: '', videoUrl: '' });
+  const [formData, setFormData] = useState({ name: '', videoUrl: '', category: 'Fuerza' });
 
-  const filteredExercises = exercises.filter(ex => 
-    ex.name.toLowerCase().includes(searchTerm.toLowerCase())
+  // Aseguramos que siempre sea un array antes de filtrar
+  const safeExercises = Array.isArray(exercises) ? exercises : [];
+
+  // Filtrado de la lista por búsqueda
+  const filteredExercises = safeExercises.filter(ex => 
+    ex.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    ex.category?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // Función para abrir modal en modo "Crear"
   const openAddModal = () => {
     setEditingExercise(null);
-    setFormData({ name: '', videoUrl: '' });
+    setFormData({ name: '', videoUrl: '', category: 'Fuerza' });
     setIsModalOpen(true);
   };
 
-  // NUEVO: Función para abrir modal en modo "Editar"
-  const openEditModal = (exercise) => {
-    setEditingExercise(exercise);
-    setFormData({ name: exercise.name, videoUrl: exercise.videoUrl || '' });
+  const openEditModal = (ex) => {
+    setEditingExercise(ex);
+    setFormData({ name: ex.name, videoUrl: ex.videoUrl || '', category: ex.category || 'Fuerza' });
     setIsModalOpen(true);
   };
 
@@ -32,158 +36,161 @@ export default function ExercisesView({ exercises, onAddExercise, onUpdateExerci
     if (!formData.name.trim()) return;
 
     if (editingExercise) {
-      // Si estamos editando, enviamos los datos combinados con el ID original
       onUpdateExercise({ ...editingExercise, ...formData });
     } else {
-      // Si es nuevo, simplemente lo agregamos
       onAddExercise(formData);
     }
     setIsModalOpen(false);
   };
 
   return (
-    <div className="max-w-5xl mx-auto h-full flex flex-col animate-in fade-in">
-      {/* Header & Search */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+    <div className="max-w-6xl mx-auto animate-in fade-in pb-10">
+      
+      {/* HEADER Y BUSCADOR */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
         <div>
-          <h2 className="text-2xl font-bold text-white uppercase">Biblioteca de Ejercicios</h2>
-          <p className="text-zinc-500 text-sm">Gestiona tu base de datos de movimientos.</p>
+          <h2 className="text-3xl font-black text-white uppercase italic tracking-tighter">Librería de Ejercicios</h2>
+          <p className="text-zinc-500 text-sm font-medium">Gestiona tu base de datos de movimientos y videos.</p>
         </div>
         
-        <div className="flex gap-2">
-          <div className="relative flex-1 md:w-64">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" size={18} />
+        <div className="flex w-full md:w-auto gap-2">
+          <div className="relative flex-1 md:w-72">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <Search size={18} className="text-zinc-500" />
+            </div>
             <input 
               type="text" 
               placeholder="Buscar ejercicio..." 
-              className="pl-10 pr-4 py-2 bg-zinc-900 border border-zinc-800 rounded-lg w-full text-white placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-yellow-400 focus:border-yellow-400 transition-all"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full bg-zinc-900 border border-zinc-800 rounded-xl pl-10 pr-4 py-3 text-white outline-none focus:border-yellow-400 text-sm transition-colors" 
+              value={searchTerm} 
+              onChange={(e) => setSearchTerm(e.target.value)} 
             />
           </div>
           <button 
             onClick={openAddModal}
-            className="bg-yellow-400 hover:bg-yellow-300 text-black px-4 py-2 rounded-lg font-bold flex items-center gap-2 transition-colors whitespace-nowrap"
+            className="bg-yellow-400 hover:bg-yellow-300 text-black px-4 py-3 rounded-xl font-black uppercase text-xs flex items-center gap-2 transition-colors shadow-lg shrink-0"
           >
-            <Plus size={18}/> <span className="hidden md:inline">Nuevo Ejercicio</span>
+            <Plus size={18}/> <span className="hidden sm:inline">Nuevo</span>
           </button>
         </div>
       </div>
 
-      {/* Exercise List */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 overflow-y-auto pb-20">
-        {filteredExercises.map(ex => (
-          <div key={ex.id} className="bg-zinc-900 p-4 rounded-xl border border-zinc-800 flex flex-col justify-between group hover:border-zinc-700 transition-colors">
-            <div>
-              <div className="flex justify-between items-start mb-2">
-                <div className="bg-zinc-800 p-2 rounded-lg text-zinc-400">
-                  <Dumbbell size={20} />
+      {/* LISTADO DE EJERCICIOS */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {filteredExercises.length > 0 ? (
+          filteredExercises.map(ex => (
+            <div key={ex.id} className="bg-zinc-900 border border-zinc-800 p-5 rounded-3xl flex flex-col justify-between group hover:border-yellow-400/50 transition-all shadow-md">
+              <div className="flex justify-between items-start mb-4">
+                <div className="flex items-start gap-3">
+                  <div className="bg-black text-yellow-400 p-3 rounded-2xl border border-zinc-800 group-hover:bg-yellow-400 group-hover:text-black transition-colors shrink-0">
+                    <Dumbbell size={20} />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-white uppercase tracking-tight leading-tight">{ex.name}</h3>
+                    <span className="text-[10px] text-zinc-500 font-black uppercase tracking-widest">{ex.category || 'General'}</span>
+                  </div>
                 </div>
-                <div className="flex gap-1 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
-                  {/* BOTÓN DE EDITAR */}
-                  <button 
-                    onClick={() => openEditModal(ex)}
-                    className="p-1.5 hover:bg-zinc-800 rounded text-zinc-500 hover:text-yellow-400 transition-colors"
-                    title="Editar"
-                  >
-                    <Edit2 size={16} />
-                  </button>
-                  {/* BOTÓN DE ELIMINAR */}
-                  <button 
-                    onClick={() => onDeleteExercise(ex.id)}
-                    className="p-1.5 hover:bg-zinc-800 rounded text-zinc-500 hover:text-red-500 transition-colors"
-                    title="Eliminar"
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                </div>
+                {ex.videoUrl && (
+                  <a href={ex.videoUrl} target="_blank" rel="noreferrer" className="text-blue-500 bg-blue-500/10 p-2 rounded-xl hover:bg-blue-500 hover:text-white transition-colors" title="Ver Video">
+                    <Video size={16} />
+                  </a>
+                )}
               </div>
-              <h3 className="font-bold text-lg text-white mb-1">{ex.name}</h3>
-            </div>
-            
-            <div className="mt-4 pt-4 border-t border-zinc-800 flex items-center">
-              {ex.videoUrl ? (
-                <a 
-                  href={ex.videoUrl} 
-                  target="_blank" 
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-2 text-xs font-bold text-blue-400 hover:text-blue-300 transition-colors"
+              
+              <div className="flex items-center gap-2 pt-4 border-t border-zinc-800/50">
+                <button 
+                  onClick={() => openEditModal(ex)}
+                  className="flex-1 py-2 bg-zinc-950 text-zinc-400 hover:text-blue-400 text-xs font-bold uppercase rounded-xl border border-zinc-800 transition-colors flex items-center justify-center gap-2"
                 >
-                  <Video size={14}/> Ver Tutorial
-                </a>
-              ) : (
-                <span className="inline-flex items-center gap-2 text-xs font-bold text-zinc-600">
-                  <Video size={14}/> Sin video
-                </span>
-              )}
+                  <Edit size={14}/> Editar
+                </button>
+                <button 
+                  onClick={() => onDeleteExercise(ex.id)}
+                  className="flex-1 py-2 bg-zinc-950 text-zinc-400 hover:text-red-500 text-xs font-bold uppercase rounded-xl border border-zinc-800 transition-colors flex items-center justify-center gap-2"
+                >
+                  <Trash2 size={14}/> Borrar
+                </button>
+              </div>
             </div>
-          </div>
-        ))}
-        
-        {filteredExercises.length === 0 && (
-          <div className="col-span-full py-12 text-center text-zinc-500 bg-zinc-900/50 rounded-xl border border-dashed border-zinc-800">
-            <Dumbbell className="w-12 h-12 mx-auto mb-3 opacity-20" />
-            <p>No se encontraron ejercicios.</p>
+          ))
+        ) : (
+          <div className="col-span-full flex flex-col items-center justify-center py-20 bg-zinc-900/30 rounded-[2rem] border border-dashed border-zinc-800">
+            <Dumbbell size={48} className="mb-4 opacity-20 text-zinc-500" />
+            <p className="text-zinc-500 font-bold uppercase tracking-widest text-sm">
+              {searchTerm ? 'No se encontraron ejercicios' : 'Tu librería está vacía'}
+            </p>
           </div>
         )}
       </div>
 
-      {/* Modal Agregar/Editar */}
+      {/* MODAL CREAR / EDITAR */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-          <div className="bg-zinc-950 w-full max-w-md rounded-xl border border-yellow-400/30 shadow-[0_0_30px_rgba(250,204,21,0.1)] relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-24 h-24 bg-yellow-400/10 rounded-full blur-2xl -mr-10 -mt-10 pointer-events-none"></div>
-
-            <div className="flex justify-between items-center p-6 border-b border-zinc-800">
-              <h2 className="text-xl font-bold text-white uppercase tracking-wider flex items-center gap-2">
-                <Dumbbell className="text-yellow-400" size={20} /> 
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 animate-in fade-in">
+          <div className="bg-zinc-950 w-full max-w-md rounded-[2rem] border border-zinc-800 shadow-2xl relative overflow-hidden">
+            <div className="flex justify-between items-center p-6 border-b border-zinc-800 bg-zinc-900/50">
+              <h2 className="text-xl font-black text-white uppercase italic tracking-tighter">
                 {editingExercise ? 'Editar Ejercicio' : 'Nuevo Ejercicio'}
               </h2>
-              <button onClick={() => setIsModalOpen(false)} className="text-zinc-500 hover:text-white transition-colors">
-                <X size={24} />
+              <button onClick={() => setIsModalOpen(false)} className="text-zinc-500 hover:text-white bg-zinc-800 p-2 rounded-full transition-colors">
+                <X size={20} />
               </button>
             </div>
-
-            <form onSubmit={handleSubmit} className="p-6 space-y-4">
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-zinc-500 uppercase tracking-wide">Nombre del Ejercicio</label>
+            
+            <form onSubmit={handleSubmit} className="p-6 space-y-5">
+              <div>
+                <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2">Nombre del Ejercicio</label>
                 <input 
-                  required
                   type="text" 
-                  placeholder="Ej. Press de Banca"
-                  className="w-full bg-zinc-900 border border-zinc-800 text-white px-4 py-3 rounded-lg focus:outline-none focus:border-yellow-400 focus:ring-1 focus:ring-yellow-400 transition-all placeholder:text-zinc-700"
-                  value={formData.name}
-                  onChange={(e) => setFormData({...formData, name: e.target.value})}
+                  required 
+                  placeholder="Ej. Sentadilla Libre"
+                  className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white outline-none focus:border-yellow-400 transition-colors" 
+                  value={formData.name} 
+                  onChange={e => setFormData({...formData, name: e.target.value})} 
                 />
               </div>
 
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-zinc-500 uppercase tracking-wide">URL del Video Tutorial (Opcional)</label>
-                <div className="relative">
-                  <Video className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-600" size={18} />
-                  <input 
-                    type="url" 
-                    placeholder="https://youtube.com/..."
-                    className="w-full bg-zinc-900 border border-zinc-800 text-white pl-10 pr-4 py-3 rounded-lg focus:outline-none focus:border-yellow-400 focus:ring-1 focus:ring-yellow-400 transition-all placeholder:text-zinc-700"
-                    value={formData.videoUrl}
-                    onChange={(e) => setFormData({...formData, videoUrl: e.target.value})}
-                  />
-                </div>
+              <div>
+                <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2">Categoría / Grupo Muscular</label>
+                <select 
+                  className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white outline-none focus:border-yellow-400 transition-colors text-sm" 
+                  value={formData.category} 
+                  onChange={e => setFormData({...formData, category: e.target.value})}
+                >
+                  <option value="Fuerza">Fuerza / General</option>
+                  <option value="Pecho">Pecho</option>
+                  <option value="Espalda">Espalda</option>
+                  <option value="Piernas">Piernas</option>
+                  <option value="Hombros">Hombros</option>
+                  <option value="Brazos">Brazos</option>
+                  <option value="Cardio">Cardio / HIIT</option>
+                  <option value="Core">Core / Abs</option>
+                </select>
               </div>
 
-              <div className="pt-4 flex gap-3">
+              <div>
+                <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2">Link de Video (YouTube/Instagram)</label>
+                <input 
+                  type="url" 
+                  placeholder="https://..."
+                  className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white outline-none focus:border-yellow-400 transition-colors" 
+                  value={formData.videoUrl} 
+                  onChange={e => setFormData({...formData, videoUrl: e.target.value})} 
+                />
+              </div>
+
+              <div className="pt-4 border-t border-zinc-800 flex gap-3">
                 <button 
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="flex-1 py-3 rounded-lg border border-zinc-800 text-zinc-400 font-bold hover:bg-zinc-900 hover:text-white transition-colors uppercase text-xs tracking-wide"
+                  type="button" 
+                  onClick={() => setIsModalOpen(false)} 
+                  className="flex-1 py-4 text-zinc-400 font-bold uppercase text-xs rounded-xl bg-black border border-zinc-800 hover:bg-zinc-900 transition-colors"
                 >
                   Cancelar
                 </button>
                 <button 
-                  type="submit"
-                  className="flex-1 py-3 rounded-lg bg-yellow-400 text-black font-bold hover:bg-yellow-300 transition-colors shadow-[0_0_20px_rgba(250,204,21,0.2)] uppercase text-xs tracking-wide flex justify-center items-center gap-2"
+                  type="submit" 
+                  className="flex-1 bg-yellow-400 hover:bg-yellow-300 text-black font-black py-4 rounded-xl uppercase text-xs tracking-widest transition-colors shadow-lg shadow-yellow-400/20"
                 >
-                  <Save size={16} /> Guardar
+                  {editingExercise ? 'Guardar Cambios' : 'Crear Ejercicio'}
                 </button>
               </div>
             </form>
