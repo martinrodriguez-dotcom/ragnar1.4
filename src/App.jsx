@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword } from 'firebase/auth';
 import { 
-  collection, doc, getDocs, updateDoc, deleteDoc, 
+  collection, doc, getDocs, updateDoc, deleteDoc, addDoc, setDoc,
   query, where, onSnapshot, collectionGroup, orderBy 
 } from 'firebase/firestore';
 import { db } from './firebase';
@@ -18,8 +18,6 @@ import CommunityView from './views/CommunityView';
 import ClientDetailView from './views/ClientDetailView';
 import StudentView from './views/StudentView';
 import StudentRegistration from './views/StudentRegistration';
-
-// Asegúrate de tener estos archivos creados en tu carpeta views
 import PaymentsView from './views/PaymentsView'; 
 import CalendarView from './views/CalendarView'; 
 
@@ -29,6 +27,9 @@ export default function App() {
   const [userRole, setUserRole] = useState(null); // 'coach', 'student', o null
   const [studentData, setStudentData] = useState(null);
   const [loadingAuth, setLoadingAuth] = useState(true);
+  
+  // NUEVO: Estado para evitar el parpadeo visual del Coach
+  const [loadingCoachData, setLoadingCoachData] = useState(true); 
 
   // Parámetro de invitación mágica por URL
   const queryParams = new URLSearchParams(window.location.search);
@@ -48,25 +49,21 @@ export default function App() {
 
   const auth = getAuth();
 
-  // 1. VERIFICAR SESIÓN Y ROL (¿Quién está entrando?)
+  // 1. VERIFICAR SESIÓN Y ROL
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
         setUser(currentUser);
-        // Buscar si el UID de este usuario pertenece a un alumno registrado
         const q = query(collection(db, 'clients'), where('studentUserId', '==', currentUser.uid));
         const querySnapshot = await getDocs(q);
 
         if (!querySnapshot.empty) {
-          // Es un Alumno
           setUserRole('student');
           setStudentData({ id: querySnapshot.docs[0].id, ...querySnapshot.docs[0].data() });
         } else {
-          // Si no es un alumno, asumimos que es el Coach/Administrador
           setUserRole('coach');
         }
       } else {
-        // No hay nadie logueado
         setUser(null);
         setUserRole(null);
         setStudentData(null);
@@ -79,13 +76,12 @@ export default function App() {
 
   // 2. CARGA DE DATOS DEL COACH (Cerebro Global en Tiempo Real)
   useEffect(() => {
-    // Si no es el coach, no escuchamos toda la base de datos general
     if (userRole !== 'coach') return;
 
-    // Escuchar Atletas
+    // Escuchar Atletas (Y apagar la carga visual cuando lleguen)
     const unsubClients = onSnapshot(collection(db, 'clients'), (snapshot) => {
-      const loadedClients = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setClients(loadedClients);
+      setClients(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setLoadingCoachData(false); // <--- AQUÍ SE EVITA EL PARPADEO
     });
 
     // Escuchar Plantillas de Rutinas
@@ -98,12 +94,12 @@ export default function App() {
       setExercisesLibrary(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
-    // Escuchar Configuración General (Pagos, Alias, etc)
+    // Escuchar Configuración General
     const unsubSettings = onSnapshot(doc(db, 'settings', 'general'), (docSnap) => {
       if (docSnap.exists()) setSettings(docSnap.data());
     });
 
-    // Escuchar TODOS los mensajes no leídos (Para la campanita del chat)
+    // Escuchar Mensajes no leídos
     const qMessages = query(
       collectionGroup(db, 'messages'), 
       where('sender', '==', 'student'), 
@@ -113,14 +109,12 @@ export default function App() {
       setUnreadMessagesCount(snapshot.docs.length);
     });
 
-    // Escuchar TODAS las notificaciones de sistema (Entrenamientos listos, faltas, etc)
+    // Escuchar Notificaciones de sistema
     const qNotifs = query(collection(db, 'trainerNotifications'), orderBy('createdAt', 'desc'));
     const unsubNotifs = onSnapshot(qNotifs, (snapshot) => {
-      const notifs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setSystemNotifications(notifs);
+      setSystemNotifications(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
-    // Apagar los micrófonos al desmontar
     return () => {
       unsubClients();
       unsubRoutines();
@@ -131,14 +125,17 @@ export default function App() {
     };
   }, [userRole]);
 
+
+  // ==========================================
   // --- FUNCIONES CRUD GLOBALES ---
+  // ==========================================
+
+  // --- CLIENTES ---
   const handleUpdateClient = async (updatedClient) => {
     try {
       const { id, ...data } = updatedClient;
       await updateDoc(doc(db, 'clients', id), data);
-    } catch (error) {
-      console.error("Error actualizando cliente: ", error);
-    }
+    } catch (error) { console.error("Error actualizando cliente: ", error); }
   };
 
   const handleDeleteClient = async (clientId) => {
@@ -149,23 +146,67 @@ export default function App() {
         setCurrentView('clients');
         setSelectedClient(null);
       }
-    } catch (error) {
-      console.error("Error eliminando cliente: ", error);
-    }
+    } catch (error) { console.error("Error eliminando cliente: ", error); }
   };
 
+  // --- EJERCICIOS ---
+  const handleAddExercise = async (exerciseData) => {
+    try { await addDoc(collection(db, 'exercises'), exerciseData); } 
+    catch (error) { console.error("Error agregando ejercicio: ", error); }
+  };
+
+  const handleUpdateExercise = async (updatedExercise) => {
+    try {
+      const { id, ...data } = updatedExercise;
+      await updateDoc(doc(db, 'exercises', id), data);
+    } catch (error) { console.error("Error actualizando ejercicio: ", error); }
+  };
+
+  const handleDeleteExercise = async (exerciseId) => {
+    if (!window.confirm('¿Estás seguro de eliminar este ejercicio?')) return;
+    try { await deleteDoc(doc(db, 'exercises', exerciseId)); } 
+    catch (error) { console.error("Error eliminando ejercicio: ", error); }
+  };
+
+  // --- RUTINAS ---
+  const handleAddRoutine = async (routineData) => {
+    try { await addDoc(collection(db, 'routines'), routineData); } 
+    catch (error) { console.error("Error agregando rutina: ", error); }
+  };
+
+  const handleUpdateRoutine = async (updatedRoutine) => {
+    try {
+      const { id, ...data } = updatedRoutine;
+      await updateDoc(doc(db, 'routines', id), data);
+    } catch (error) { console.error("Error actualizando rutina: ", error); }
+  };
+
+  const handleDeleteRoutine = async (routineId) => {
+    if (!window.confirm('¿Estás seguro de eliminar esta rutina?')) return;
+    try { await deleteDoc(doc(db, 'routines', routineId)); } 
+    catch (error) { console.error("Error eliminando rutina: ", error); }
+  };
+
+  // --- CONFIGURACIÓN ---
+  const handleUpdateSettings = async (newSettings) => {
+    try { await setDoc(doc(db, 'settings', 'general'), newSettings, { merge: true }); } 
+    catch (error) { console.error("Error actualizando configuración: ", error); }
+  };
+
+  // --- NAVEGACIÓN ---
   const navigateTo = (view, clientData = null) => {
     setCurrentView(view);
     if (clientData) setSelectedClient(clientData);
   };
 
-  // Cálculo total de notificaciones para la campana roja del menú
+  // Cálculo total de notificaciones para la campana roja
   const unreadSystemCount = systemNotifications.filter(n => !n.read && !n.deleted).length;
   const totalNotifications = unreadMessagesCount + unreadSystemCount;
 
-  // --- RENDERIZADO CONDICIONAL DE PANTALLAS ---
+  // --- RENDERIZADO CONDICIONAL ---
 
-  if (loadingAuth) {
+  // MODIFICADO: Mantenemos el spinner si la Auth carga, o si el Coach aún no recibe sus datos.
+  if (loadingAuth || (userRole === 'coach' && loadingCoachData)) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-yellow-400"></div>
@@ -197,21 +238,16 @@ export default function App() {
   return (
     <div className="flex h-screen bg-zinc-950 text-white font-sans overflow-hidden">
       
-      {/* Menú Lateral (Sidebar) */}
       <Sidebar 
         activeView={currentView} 
         navigateTo={navigateTo} 
         notificationCount={totalNotifications} 
       />
       
-      {/* Contenedor Principal con Scroll */}
       <main className="flex-1 overflow-y-auto bg-zinc-950 p-4 md:p-8 custom-scrollbar relative">
         
         {currentView === 'dashboard' && (
-          <DashboardView 
-            clients={clients} 
-            navigateTo={navigateTo} 
-          />
+          <DashboardView clients={clients} navigateTo={navigateTo} />
         )}
         
         {currentView === 'clients' && (
@@ -235,18 +271,26 @@ export default function App() {
           <RoutinesView 
             routines={routines} 
             exercisesLibrary={exercisesLibrary} 
+            onAddRoutine={handleAddRoutine}
+            onUpdateRoutine={handleUpdateRoutine}
+            onDeleteRoutine={handleDeleteRoutine}
           />
         )}
         
         {currentView === 'exercises' && (
           <ExercisesView 
+            exercises={exercisesLibrary}
             exercisesLibrary={exercisesLibrary} 
+            onAddExercise={handleAddExercise}
+            onUpdateExercise={handleUpdateExercise}
+            onDeleteExercise={handleDeleteExercise}
           />
         )}
         
         {currentView === 'settings' && (
           <SettingsView 
             settings={settings} 
+            onUpdateSettings={handleUpdateSettings}
           />
         )}
         
@@ -274,7 +318,6 @@ export default function App() {
         )}
 
       </main>
-
     </div>
   );
 }
