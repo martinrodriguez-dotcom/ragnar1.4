@@ -1,231 +1,177 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Bell, CheckCircle, Trash2, AlertTriangle, User, 
-  Check, Calendar, Users, TrendingUp, TrendingDown, CreditCard, DollarSign
-} from 'lucide-react';
-import { collection, query, orderBy, onSnapshot, deleteDoc, doc, updateDoc, getDocs, where } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, doc, updateDoc, writeBatch } from 'firebase/firestore';
 import { db } from '../firebase';
+import { Bell, Dumbbell, AlertTriangle, MessageSquare, CheckCircle } from 'lucide-react';
 
 export default function NotificationsView() {
   const [notifications, setNotifications] = useState([]);
-  const [activeTab, setActiveTab] = useState('unread'); // 'unread' | 'read' | 'all'
-  const [stats, setStats] = useState({ assigned: 0, completed: 0 });
+  const [loading, setLoading] = useState(true);
 
-  const todayId = new Date().toISOString().split('T')[0];
-
+  // Escuchador en Tiempo Real para la vista de Notificaciones
   useEffect(() => {
-    // Escuchar todas las notificaciones ordenadas por fecha de creación
     const q = query(collection(db, 'trainerNotifications'), orderBy('createdAt', 'desc'));
+    
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      setNotifications(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      const notifs = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setNotifications(notifs);
+      setLoading(false);
     });
 
-    // Calcular estadísticas diarias (Rutinas asignadas hoy vs Rutinas finalizadas hoy)
-    const fetchDailyStats = async () => {
-      try {
-        const clientsSnap = await getDocs(collection(db, 'clients'));
-        let assignedCount = 0;
-        let completedCount = 0;
-        
-        for (const clientDoc of clientsSnap.docs) {
-          const sessionSnap = await getDocs(query(collection(db, 'clients', clientDoc.id, 'sessions'), where('date', '==', todayId)));
-          if (!sessionSnap.empty) {
-            const data = sessionSnap.docs[0].data();
-            if (data.exercises && data.exercises.length > 0) {
-              assignedCount++;
-              if (data.isFinalized) completedCount++;
-            }
-          }
-        }
-        setStats({ assigned: assignedCount, completed: completedCount });
-      } catch (e) { 
-        console.error("Error al cargar estadísticas diarias:", e); 
-      }
-    };
-
-    fetchDailyStats();
     return () => unsubscribe();
-  }, [todayId]);
+  }, []);
 
-  // --- ACCIONES ---
-  const markAsRead = async (id) => { 
-    try { 
-      await updateDoc(doc(db, 'trainerNotifications', id), { read: true }); 
-    } catch (e) {
-      console.error(e);
-    } 
+  // Marcar una notificación individual como leída
+  const markAsRead = async (id, currentStatus) => {
+    if (currentStatus) return; // Si ya está leída, no hace nada
+    try {
+      await updateDoc(doc(db, 'trainerNotifications', id), {
+        read: true
+      });
+    } catch (error) {
+      console.error("Error al marcar como leída:", error);
+    }
   };
 
-  const deleteNotification = async (id) => { 
-    if(window.confirm('¿Estás seguro de eliminar esta alerta del historial?')) {
-      try {
-        await deleteDoc(doc(db, 'trainerNotifications', id)); 
-      } catch(e) {
-        console.error(e);
-      }
-    } 
+  // Marcar TODAS como leídas en un solo clic (Usando Batch para no saturar Firebase)
+  const markAllAsRead = async () => {
+    const unreadNotifs = notifications.filter(n => !n.read);
+    if (unreadNotifs.length === 0) return;
+
+    try {
+      const batch = writeBatch(db);
+      unreadNotifs.forEach(notif => {
+        const notifRef = doc(db, 'trainerNotifications', notif.id);
+        batch.update(notifRef, { read: true });
+      });
+      await batch.commit();
+    } catch (error) {
+      console.error("Error al marcar todas como leídas:", error);
+    }
   };
 
-  // --- FILTRADO ---
-  const filteredNotifications = notifications.filter(n => {
-    if (activeTab === 'unread') return !n.read;
-    if (activeTab === 'read') return n.read;
-    return true; // 'all'
-  });
+  // Íconos dinámicos según el tipo de notificación
+  const getIconForType = (type) => {
+    switch (type) {
+      case 'workout_completed': 
+        return <Dumbbell className="text-green-500" size={24} />;
+      case 'missed_workout': 
+        return <AlertTriangle className="text-red-500" size={24} />;
+      case 'new_message': 
+        return <MessageSquare className="text-yellow-400" size={24} />;
+      default: 
+        return <Bell className="text-blue-500" size={24} />;
+    }
+  };
+
+  // Títulos dinámicos según el tipo de notificación
+  const getTitleForType = (notif) => {
+    switch (notif.type) {
+      case 'workout_completed': 
+        return `${notif.clientName} ha completado su rutina`;
+      case 'missed_workout': 
+        return `${notif.clientName} no entrenó ayer`;
+      case 'new_message': 
+        return `Nuevo mensaje de ${notif.clientName}`;
+      default: 
+        return 'Nueva Notificación';
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center h-full min-h-[50vh]">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-yellow-400"></div>
+      </div>
+    );
+  }
+
+  const unreadCount = notifications.filter(n => !n.read).length;
 
   return (
-    <div className="max-w-5xl mx-auto animate-in fade-in pb-10">
+    <div className="max-w-4xl mx-auto animate-in fade-in pb-10">
       
-      {/* HEADER Y TABS */}
+      {/* HEADER */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
         <div>
-          <h2 className="text-3xl font-black text-white uppercase italic tracking-tighter">Notificaciones</h2>
-          <p className="text-zinc-500 text-sm">Control de actividad y vencimientos de cobros.</p>
+          <h2 className="text-3xl font-black text-white uppercase italic tracking-tighter">Centro de Control</h2>
+          <p className="text-zinc-500 text-sm font-medium">
+            Monitorea la actividad de tus atletas en tiempo real.
+          </p>
         </div>
-        
-        <div className="flex bg-zinc-900 p-1 rounded-xl border border-zinc-800 w-full md:w-auto">
+        {unreadCount > 0 && (
           <button 
-            onClick={() => setActiveTab('unread')} 
-            className={`flex-1 md:px-4 py-2 rounded-lg text-xs font-bold uppercase transition-all ${activeTab === 'unread' ? 'bg-yellow-400 text-black shadow-lg' : 'text-zinc-500 hover:text-white'}`}
+            onClick={markAllAsRead}
+            className="bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-white px-4 py-3 rounded-xl font-bold flex items-center gap-2 transition-colors text-sm shadow-lg active:scale-95"
           >
-            Pendientes ({notifications.filter(n => !n.read).length})
+            <CheckCircle size={18} className="text-yellow-400"/>
+            Marcar todo como leído
           </button>
-          <button 
-            onClick={() => setActiveTab('read')} 
-            className={`flex-1 md:px-4 py-2 rounded-lg text-xs font-bold uppercase transition-all ${activeTab === 'read' ? 'bg-yellow-400 text-black shadow-lg' : 'text-zinc-500 hover:text-white'}`}
-          >
-            Historial
-          </button>
-          <button 
-            onClick={() => setActiveTab('all')} 
-            className={`flex-1 md:px-4 py-2 rounded-lg text-xs font-bold uppercase transition-all ${activeTab === 'all' ? 'bg-yellow-400 text-black shadow-lg' : 'text-zinc-500 hover:text-white'}`}
-          >
-            Todas
-          </button>
-        </div>
-      </div>
-
-      {/* DASHBOARD RÁPIDO SUPERIOR */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-        <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl flex items-center gap-4 shadow-xl">
-          <div className="bg-green-500/10 p-3 rounded-xl text-green-500"><TrendingUp size={24}/></div>
-          <div>
-            <p className="text-[10px] uppercase font-black text-zinc-500 tracking-widest">Rutinas Hoy</p>
-            <p className="text-2xl font-black text-white">{stats.completed} / {stats.assigned}</p>
-          </div>
-        </div>
-        
-        <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl flex items-center gap-4 shadow-xl">
-          <div className="bg-red-500/10 p-3 rounded-xl text-red-500"><AlertTriangle size={24}/></div>
-          <div>
-            <p className="text-[10px] uppercase font-black text-zinc-500 tracking-widest">Cuotas Vencidas</p>
-            <p className="text-2xl font-black text-white">
-              {notifications.filter(n => n.type === 'payment_expired' && !n.read).length}
-            </p>
-          </div>
-        </div>
-        
-        <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl flex items-center gap-4 shadow-xl">
-          <div className="bg-yellow-400/10 p-3 rounded-xl text-yellow-400"><DollarSign size={24}/></div>
-          <div>
-            <p className="text-[10px] uppercase font-black text-zinc-500 tracking-widest">Próximos Cobros</p>
-            <p className="text-2xl font-black text-white">
-              {notifications.filter(n => n.type === 'payment_warning' && !n.read).length}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* LISTADO DE NOTIFICACIONES */}
-      <div className="space-y-4">
-        {filteredNotifications.length === 0 ? (
-          <div className="text-center py-20 bg-zinc-900/30 rounded-3xl border border-dashed border-zinc-800">
-            <Bell className="w-12 h-12 text-zinc-800 mx-auto mb-4 opacity-20"/>
-            <p className="text-zinc-600 font-bold uppercase tracking-widest text-sm">Bandeja Vacía</p>
-          </div>
-        ) : (
-          filteredNotifications.map(n => {
-            // Clasificación del tipo de notificación para los colores y estilos
-            const isExpired = n.type === 'payment_expired';
-            const isWarning = n.type === 'payment_warning';
-            const isWorkoutCompleted = n.type === 'workout_completed';
-            const isMissedWorkout = n.type === 'missed_workout';
-
-            return (
-              <div 
-                key={n.id} 
-                className={`relative overflow-hidden bg-zinc-900 border p-5 rounded-2xl flex gap-5 transition-all ${
-                  n.read ? 'border-zinc-800 opacity-60' : 'border-zinc-700 shadow-xl'
-                }`}
-              >
-                {/* Barra lateral de color */}
-                <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${
-                  isExpired || isMissedWorkout ? 'bg-red-500' : isWarning ? 'bg-yellow-400' : 'bg-green-500'
-                }`}></div>
-                
-                {/* Ícono de la Notificación */}
-                <div className={`p-4 rounded-2xl h-fit ${
-                  isExpired || isMissedWorkout ? 'bg-red-500/10 text-red-500' : 
-                  isWarning ? 'bg-yellow-400/10 text-yellow-400' : 
-                  'bg-green-500/10 text-green-500'
-                }`}>
-                   {isExpired || isWarning ? <CreditCard size={24}/> : 
-                    isMissedWorkout ? <TrendingDown size={24}/> : 
-                    <CheckCircle size={24}/>}
-                </div>
-                
-                {/* Cuerpo de la Notificación */}
-                <div className="flex-1">
-                   <div className="flex justify-between items-start">
-                      <div>
-                        <h4 className="font-black text-white text-lg uppercase leading-none">{n.clientName}</h4>
-                        <p className="text-[10px] text-zinc-500 font-bold uppercase mt-1 tracking-widest">
-                          {n.createdAt?.toDate().toLocaleDateString('es-ES', { day: '2-digit', month: 'short', hour: '2-digit', minute:'2-digit' })}
-                        </p>
-                      </div>
-                      
-                      {/* Botones de acción */}
-                      <div className="flex gap-2">
-                        {!n.read && (
-                          <button 
-                            onClick={() => markAsRead(n.id)} 
-                            className="p-2 bg-zinc-800 text-zinc-400 hover:text-green-500 hover:bg-zinc-700 rounded-lg transition-colors"
-                            title="Marcar como leída"
-                          >
-                            <Check size={18}/>
-                          </button>
-                        )}
-                        <button 
-                          onClick={() => deleteNotification(n.id)} 
-                          className="p-2 bg-zinc-800 text-zinc-400 hover:text-red-500 hover:bg-zinc-700 rounded-lg transition-colors"
-                          title="Eliminar notificación"
-                        >
-                          <Trash2 size={18}/>
-                        </button>
-                      </div>
-                   </div>
-
-                   {/* Mensaje o Descripción */}
-                   <div className="mt-3 bg-black/40 p-4 rounded-xl border border-zinc-800/50">
-                      <p className={`text-sm font-bold ${
-                        isExpired ? 'text-red-400' : 
-                        isWarning ? 'text-yellow-400' : 
-                        isMissedWorkout ? 'text-red-400' : 
-                        'text-green-400'
-                      }`}>
-                        {n.message || (isWorkoutCompleted ? 'ENTRENAMIENTO FINALIZADO' : 'NO ENTRENÓ')}
-                      </p>
-                      
-                      {/* Sub-detalles como el rendimiento del alumno o la excusa por faltar */}
-                      {n.performance && <p className="text-zinc-300 text-sm mt-2 italic font-medium">"{n.performance}"</p>}
-                      {n.reason && <p className="text-zinc-300 text-sm mt-2 italic font-medium">Motivo: "{n.reason}"</p>}
-                   </div>
-                </div>
-              </div>
-            );
-          })
         )}
       </div>
+
+      {/* LISTA DE NOTIFICACIONES */}
+      <div className="bg-zinc-900 border border-zinc-800 rounded-[2rem] overflow-hidden shadow-xl">
+        {notifications.length > 0 ? (
+          <div className="divide-y divide-zinc-800/50">
+            {notifications.map((notif) => (
+              <div 
+                key={notif.id} 
+                onClick={() => markAsRead(notif.id, notif.read)}
+                className={`p-6 flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all cursor-pointer hover:bg-zinc-800/50 ${!notif.read ? 'bg-black/40' : 'opacity-60 grayscale-[50%]'}`}
+              >
+                <div className="flex items-start gap-4">
+                  <div className={`p-4 rounded-2xl shrink-0 ${!notif.read ? 'bg-zinc-800 shadow-lg border border-zinc-700' : 'bg-transparent border border-transparent'}`}>
+                    {getIconForType(notif.type)}
+                  </div>
+                  <div>
+                    <h3 className={`text-lg font-black uppercase tracking-tight ${!notif.read ? 'text-white' : 'text-zinc-400'}`}>
+                      {getTitleForType(notif)}
+                    </h3>
+                    
+                    {/* Renderizado condicional del contenido de la notificación */}
+                    {notif.type === 'missed_workout' && notif.reason && (
+                      <div className="mt-3 bg-red-500/10 border border-red-500/20 p-3 rounded-xl">
+                        <p className="text-red-200 text-sm italic font-medium">"{notif.reason}"</p>
+                      </div>
+                    )}
+                    
+                    {notif.type === 'workout_completed' && (
+                      <p className="text-zinc-400 text-sm mt-1 font-medium">
+                        Fecha de la sesión: <span className="font-bold text-white">{notif.date}</span>
+                      </p>
+                    )}
+
+                    <p className="text-[10px] uppercase font-black text-zinc-500 tracking-widest mt-3">
+                      {notif.createdAt?.toDate().toLocaleString('es-ES', { 
+                        weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute:'2-digit' 
+                      })}
+                    </p>
+                  </div>
+                </div>
+
+                {/* ETIQUETA DE "NUEVO" */}
+                {!notif.read && (
+                  <div className="shrink-0 flex items-center self-start md:self-auto mt-2 md:mt-0 ml-16 md:ml-0">
+                    <span className="bg-yellow-400 text-black text-[10px] font-black uppercase px-3 py-1.5 rounded-full tracking-widest shadow-[0_0_10px_rgba(250,204,21,0.3)]">
+                      Nuevo
+                    </span>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center py-32 text-zinc-600">
+            <Bell size={64} className="mb-6 opacity-20" />
+            <p className="text-xl font-black uppercase tracking-widest opacity-40">Todo tranquilo</p>
+            <p className="text-sm mt-2 opacity-50 font-medium">No tienes notificaciones pendientes.</p>
+          </div>
+        )}
+      </div>
+
     </div>
   );
 }
