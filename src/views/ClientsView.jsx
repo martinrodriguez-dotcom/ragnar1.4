@@ -3,7 +3,8 @@ import { Search, Plus, User, Trash2, Edit, Dumbbell, Calendar, Check, ChevronRig
 
 export default function ClientsView({ 
   clients = [], 
-  routines = [], 
+  settings = null, 
+  routines = [], // Recibimos routines por si en el futuro decides mostrar la rutina asignada aquí
   navigateTo, 
   onAddClient, 
   onUpdateClient, 
@@ -23,7 +24,11 @@ export default function ClientsView({
 
   // Aseguramos que siempre sean arrays para evitar errores si Firebase tarda en cargar
   const safeClients = Array.isArray(clients) ? clients : [];
-  const safeRoutines = Array.isArray(routines) ? routines : [];
+  
+  // Extraemos los planes desde settings (o ponemos uno por defecto si no hay nada configurado)
+  const safePlans = settings?.plans && Array.isArray(settings.plans) && settings.plans.length > 0 
+    ? settings.plans 
+    : ['Plan Base'];
 
   const filteredClients = safeClients.filter(c => 
     c.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -35,7 +40,7 @@ export default function ClientsView({
     setFormData({
       name: '',
       email: '',
-      plan: safeRoutines.length > 0 ? safeRoutines[0].name : 'Plan Base',
+      plan: safePlans[0], // Usamos el primer plan de la lista de configuración
       startDate: new Date().toISOString().split('T')[0]
     });
     setIsModalOpen(true);
@@ -46,7 +51,7 @@ export default function ClientsView({
     setFormData({
       name: client.name || '',
       email: client.email || '',
-      plan: client.plan || '',
+      plan: client.plan || safePlans[0],
       startDate: client.startDate || new Date().toISOString().split('T')[0]
     });
     setIsModalOpen(true);
@@ -87,7 +92,7 @@ export default function ClientsView({
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
         <div>
           <h2 className="text-3xl font-black text-white uppercase italic tracking-tighter">Mis Atletas</h2>
-          <p className="text-zinc-500 text-sm font-medium">Gestiona tu equipo, rutinas y accesos.</p>
+          <p className="text-zinc-500 text-sm font-medium">Gestiona tu equipo y sus planes de suscripción.</p>
         </div>
         
         <div className="flex w-full md:w-auto gap-2">
@@ -121,6 +126,7 @@ export default function ClientsView({
               onClick={() => navigateTo('client-detail', client)}
               className="bg-zinc-900 border border-zinc-800 p-5 rounded-3xl flex flex-col justify-between group hover:border-yellow-400/50 transition-all shadow-md cursor-pointer relative overflow-hidden"
             >
+              {/* Etiqueta de App Vinculada */}
               <div className={`absolute top-0 right-0 px-3 py-1 text-[9px] font-black uppercase tracking-widest rounded-bl-xl ${client.studentUserId ? 'bg-green-500/20 text-green-500' : 'bg-zinc-800 text-zinc-500'}`}>
                 {client.studentUserId ? 'App Vinculada' : 'Pendiente'}
               </div>
@@ -146,6 +152,7 @@ export default function ClientsView({
                 </div>
               </div>
 
+              {/* BOTONES DE ACCIÓN */}
               <div className="flex items-center gap-2 pt-4 border-t border-zinc-800/50" onClick={e => e.stopPropagation()}>
                 {!client.studentUserId && (
                   <button 
@@ -226,19 +233,15 @@ export default function ClientsView({
               </div>
 
               <div>
-                <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2">Plan Asignado (Plantilla)</label>
+                <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2">Plan de Suscripción</label>
                 <select 
                   className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white outline-none focus:border-yellow-400 transition-colors text-sm" 
                   value={formData.plan} 
                   onChange={e => setFormData({...formData, plan: e.target.value})}
                 >
-                  <option value="">Seleccionar un plan...</option>
-                  {safeRoutines.map(r => (
-                    <option key={r.id} value={r.name}>{r.name}</option>
+                  {safePlans.map((planName, index) => (
+                    <option key={index} value={planName}>{planName}</option>
                   ))}
-                  {safeRoutines.length === 0 && (
-                    <option disabled>No hay rutinas creadas</option>
-                  )}
                 </select>
               </div>
 
