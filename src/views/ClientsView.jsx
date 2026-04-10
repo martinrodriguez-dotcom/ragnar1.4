@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, Plus, User, Trash2, Edit, Dumbbell, Calendar, Copy, Check, ChevronRight, Link } from 'lucide-react';
+import { Search, Plus, User, Trash2, Edit, Dumbbell, Calendar, Check, ChevronRight, Link, X } from 'lucide-react';
 
 export default function ClientsView({ 
   clients = [], 
@@ -14,7 +14,6 @@ export default function ClientsView({
   const [editingClient, setEditingClient] = useState(null);
   const [copiedId, setCopiedId] = useState(null);
 
-  // Estado del formulario
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -22,11 +21,10 @@ export default function ClientsView({
     startDate: new Date().toISOString().split('T')[0]
   });
 
-  // Aseguramos que siempre sean arrays para evitar errores
+  // Aseguramos que siempre sean arrays para evitar errores si Firebase tarda en cargar
   const safeClients = Array.isArray(clients) ? clients : [];
   const safeRoutines = Array.isArray(routines) ? routines : [];
 
-  // Filtrado de búsqueda
   const filteredClients = safeClients.filter(c => 
     c.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     c.email?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -62,20 +60,20 @@ export default function ClientsView({
       if (typeof onUpdateClient === 'function') {
         onUpdateClient({ ...editingClient, ...formData });
       } else {
-        console.error("Error de conexión: onUpdateClient no está definido");
+        console.error("Fallo de conexión: onUpdateClient no llegó desde App.jsx");
       }
     } else {
       if (typeof onAddClient === 'function') {
         onAddClient(formData);
       } else {
-        console.error("Error de conexión: onAddClient no está definido");
+        console.error("Fallo de conexión: onAddClient no llegó desde App.jsx");
       }
     }
     setIsModalOpen(false);
   };
 
   const handleCopyLink = (e, clientId) => {
-    e.stopPropagation(); // Evita que se abra el detalle del cliente al hacer clic
+    e.stopPropagation(); 
     const inviteLink = `${window.location.origin}?invite=${clientId}`;
     navigator.clipboard.writeText(inviteLink);
     setCopiedId(clientId);
@@ -123,7 +121,6 @@ export default function ClientsView({
               onClick={() => navigateTo('client-detail', client)}
               className="bg-zinc-900 border border-zinc-800 p-5 rounded-3xl flex flex-col justify-between group hover:border-yellow-400/50 transition-all shadow-md cursor-pointer relative overflow-hidden"
             >
-              {/* Indicador de vinculación */}
               <div className={`absolute top-0 right-0 px-3 py-1 text-[9px] font-black uppercase tracking-widest rounded-bl-xl ${client.studentUserId ? 'bg-green-500/20 text-green-500' : 'bg-zinc-800 text-zinc-500'}`}>
                 {client.studentUserId ? 'App Vinculada' : 'Pendiente'}
               </div>
@@ -145,11 +142,10 @@ export default function ClientsView({
                   <Dumbbell size={14} className="text-yellow-400"/> {client.plan || 'Plan Base'}
                 </div>
                 <div className="flex items-center gap-2 text-xs text-zinc-400 font-medium bg-black/30 p-2 rounded-xl border border-zinc-800/50">
-                  <Calendar size={14} className="text-yellow-400"/> Inicio: {client.startDate ? new Date(client.startDate).toLocaleDateString() : 'No definido'}
+                  <Calendar size={14} className="text-yellow-400"/> Inicio: {client.startDate ? new Date(client.startDate).toLocaleDateString('es-ES', {timeZone: 'UTC'}) : 'No definido'}
                 </div>
               </div>
 
-              {/* BOTONES DE ACCIÓN */}
               <div className="flex items-center gap-2 pt-4 border-t border-zinc-800/50" onClick={e => e.stopPropagation()}>
                 {!client.studentUserId && (
                   <button 
