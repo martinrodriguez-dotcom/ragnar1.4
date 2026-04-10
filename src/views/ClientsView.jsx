@@ -1,44 +1,86 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  Search, Edit, Trash2, User, ChevronRight, 
-  Dumbbell, Calendar as CalendarIcon, X, Mail, Link, Check
-} from 'lucide-react';
-import { doc, getDoc } from 'firebase/firestore';
-import { db } from '../firebase';
+import React, { useState } from 'react';
+import { Search, Plus, User, Trash2, Edit, Dumbbell, Calendar, Copy, Check, ChevronRight, Link } from 'lucide-react';
 
-export default function ClientsView({ clients, navigateTo, onUpdateClient, onDeleteClient }) {
+export default function ClientsView({ 
+  clients = [], 
+  routines = [], 
+  navigateTo, 
+  onAddClient, 
+  onUpdateClient, 
+  onDeleteClient 
+}) {
   const [searchTerm, setSearchTerm] = useState('');
-  const [copiedId, setCopiedId] = useState(null);
-  
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingClient, setEditingClient] = useState(null);
-  const [trainerPlans, setTrainerPlans] = useState([]);
+  const [copiedId, setCopiedId] = useState(null);
 
-  useEffect(() => {
-    const fetchSettings = async () => {
-      try {
-        const snap = await getDoc(doc(db, 'settings', 'general'));
-        if (snap.exists() && snap.data().plans) {
-          setTrainerPlans(snap.data().plans);
-        }
-      } catch (error) { 
-        console.error(error); 
+  // Estado del formulario
+  const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+    plan: '',
+    startDate: new Date().toISOString().split('T')[0]
+  });
+
+  // Aseguramos que siempre sean arrays para evitar errores
+  const safeClients = Array.isArray(clients) ? clients : [];
+  const safeRoutines = Array.isArray(routines) ? routines : [];
+
+  // Filtrado de búsqueda
+  const filteredClients = safeClients.filter(c => 
+    c.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    c.email?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const openAddModal = () => {
+    setEditingClient(null);
+    setFormData({
+      name: '',
+      email: '',
+      plan: safeRoutines.length > 0 ? safeRoutines[0].name : 'Plan Base',
+      startDate: new Date().toISOString().split('T')[0]
+    });
+    setIsModalOpen(true);
+  };
+
+  const openEditModal = (client) => {
+    setEditingClient(client);
+    setFormData({
+      name: client.name || '',
+      email: client.email || '',
+      plan: client.plan || '',
+      startDate: client.startDate || new Date().toISOString().split('T')[0]
+    });
+    setIsModalOpen(true);
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!formData.name.trim()) return;
+
+    if (editingClient) {
+      if (typeof onUpdateClient === 'function') {
+        onUpdateClient({ ...editingClient, ...formData });
+      } else {
+        console.error("Error de conexión: onUpdateClient no está definido");
       }
-    };
-    fetchSettings();
-  }, []);
+    } else {
+      if (typeof onAddClient === 'function') {
+        onAddClient(formData);
+      } else {
+        console.error("Error de conexión: onAddClient no está definido");
+      }
+    }
+    setIsModalOpen(false);
+  };
 
-  const handleCopyLink = (clientId, e) => {
-    e.stopPropagation();
-    const inviteLink = `${window.location.origin}/?invite=${clientId}`;
+  const handleCopyLink = (e, clientId) => {
+    e.stopPropagation(); // Evita que se abra el detalle del cliente al hacer clic
+    const inviteLink = `${window.location.origin}?invite=${clientId}`;
     navigator.clipboard.writeText(inviteLink);
     setCopiedId(clientId);
     setTimeout(() => setCopiedId(null), 2000);
   };
-
-  const filteredClients = clients.filter(client => 
-    client.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
 
   return (
     <div className="max-w-6xl mx-auto animate-in fade-in pb-10">
@@ -47,71 +89,95 @@ export default function ClientsView({ clients, navigateTo, onUpdateClient, onDel
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
         <div>
           <h2 className="text-3xl font-black text-white uppercase italic tracking-tighter">Mis Atletas</h2>
-          <p className="text-zinc-500 text-sm font-medium">Gestiona tu base de clientes.</p>
+          <p className="text-zinc-500 text-sm font-medium">Gestiona tu equipo, rutinas y accesos.</p>
         </div>
-        <div className="relative w-full md:w-72">
-          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-            <Search size={18} className="text-zinc-500" />
+        
+        <div className="flex w-full md:w-auto gap-2">
+          <div className="relative flex-1 md:w-72">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <Search size={18} className="text-zinc-500" />
+            </div>
+            <input 
+              type="text" 
+              placeholder="Buscar por nombre o email..." 
+              className="w-full bg-zinc-900 border border-zinc-800 rounded-xl pl-10 pr-4 py-3 text-white outline-none focus:border-yellow-400 text-sm transition-colors" 
+              value={searchTerm} 
+              onChange={(e) => setSearchTerm(e.target.value)} 
+            />
           </div>
-          <input 
-            type="text" 
-            placeholder="Buscar alumno..." 
-            className="w-full bg-zinc-900 border border-zinc-800 rounded-xl pl-10 pr-4 py-3 text-white outline-none focus:border-yellow-400 text-sm transition-colors" 
-            value={searchTerm} 
-            onChange={(e) => setSearchTerm(e.target.value)} 
-          />
+          <button 
+            onClick={openAddModal}
+            className="bg-yellow-400 hover:bg-yellow-300 text-black px-4 py-3 rounded-xl font-black uppercase text-xs flex items-center gap-2 transition-colors shadow-lg shrink-0"
+          >
+            <Plus size={18}/> <span className="hidden sm:inline">Nuevo Atleta</span>
+          </button>
         </div>
       </div>
 
-      {/* LISTADO DE CLIENTES */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      {/* LISTADO DE ATLETAS */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {filteredClients.length > 0 ? (
           filteredClients.map(client => (
             <div 
               key={client.id} 
-              onClick={() => navigateTo('client-detail', client)} 
-              className="bg-zinc-900 border border-zinc-800 p-5 rounded-3xl flex items-center justify-between group cursor-pointer hover:border-yellow-400/50 transition-all shadow-md"
+              onClick={() => navigateTo('client-detail', client)}
+              className="bg-zinc-900 border border-zinc-800 p-5 rounded-3xl flex flex-col justify-between group hover:border-yellow-400/50 transition-all shadow-md cursor-pointer relative overflow-hidden"
             >
-              <div className="flex items-center gap-4 overflow-hidden">
-                <div className="w-12 h-12 bg-black text-yellow-400 rounded-2xl flex items-center justify-center font-black text-xl shadow-lg shrink-0 group-hover:bg-yellow-400 group-hover:text-black transition-colors border border-zinc-800">
-                  {client.name.charAt(0)}
+              {/* Indicador de vinculación */}
+              <div className={`absolute top-0 right-0 px-3 py-1 text-[9px] font-black uppercase tracking-widest rounded-bl-xl ${client.studentUserId ? 'bg-green-500/20 text-green-500' : 'bg-zinc-800 text-zinc-500'}`}>
+                {client.studentUserId ? 'App Vinculada' : 'Pendiente'}
+              </div>
+
+              <div className="flex items-start gap-4 mb-4 mt-2">
+                <div className="w-14 h-14 bg-black text-yellow-400 rounded-2xl flex items-center justify-center font-black text-xl border border-zinc-800 group-hover:bg-yellow-400 group-hover:text-black transition-colors shrink-0">
+                  {client.name?.charAt(0).toUpperCase()}
                 </div>
-                <div className="overflow-hidden">
-                  <div className="flex items-center gap-2">
-                    <h3 className="font-bold text-white uppercase truncate">{client.name}</h3>
-                    {/* BOTÓN DE LINK RÁPIDO */}
-                    <button 
-                      onClick={(e) => handleCopyLink(client.id, e)}
-                      className={`p-1.5 rounded-lg transition-all ${copiedId === client.id ? 'bg-green-500/20 text-green-500' : 'bg-zinc-800 text-zinc-500 hover:text-white'}`}
-                      title="Copiar Link de Invitación"
-                    >
-                      {copiedId === client.id ? <Check size={14}/> : <Link size={14}/>}
-                    </button>
-                  </div>
-                  <div className="flex items-center gap-3 text-[10px] text-zinc-500 uppercase font-black mt-1">
-                    <span className="text-yellow-400 flex items-center gap-1"><Dumbbell size={10}/> {client.plan || 'Sin plan'}</span>
-                    <span>{client.studentUserId ? '✅ Vinculado' : '⏳ Pendiente'}</span>
-                  </div>
+                <div>
+                  <h3 className="font-bold text-white uppercase tracking-tight leading-tight">{client.name}</h3>
+                  <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest mt-1 truncate max-w-[150px]">
+                    {client.email || 'Sin email asignado'}
+                  </p>
+                </div>
+              </div>
+              
+              <div className="space-y-2 mb-6">
+                <div className="flex items-center gap-2 text-xs text-zinc-400 font-medium bg-black/30 p-2 rounded-xl border border-zinc-800/50">
+                  <Dumbbell size={14} className="text-yellow-400"/> {client.plan || 'Plan Base'}
+                </div>
+                <div className="flex items-center gap-2 text-xs text-zinc-400 font-medium bg-black/30 p-2 rounded-xl border border-zinc-800/50">
+                  <Calendar size={14} className="text-yellow-400"/> Inicio: {client.startDate ? new Date(client.startDate).toLocaleDateString() : 'No definido'}
                 </div>
               </div>
 
               {/* BOTONES DE ACCIÓN */}
-              <div className="flex items-center gap-1 shrink-0 ml-4">
+              <div className="flex items-center gap-2 pt-4 border-t border-zinc-800/50" onClick={e => e.stopPropagation()}>
+                {!client.studentUserId && (
+                  <button 
+                    onClick={(e) => handleCopyLink(e, client.id)}
+                    className={`flex-1 py-2 text-xs font-black uppercase tracking-widest rounded-xl border transition-all flex items-center justify-center gap-2 ${copiedId === client.id ? 'bg-green-500/20 border-green-500/30 text-green-500' : 'bg-yellow-400/10 border-yellow-400/20 text-yellow-400 hover:bg-yellow-400/20'}`}
+                  >
+                    {copiedId === client.id ? <><Check size={14}/> Copiado</> : <><Link size={14}/> Invitar</>}
+                  </button>
+                )}
+
                 <button 
-                  onClick={(e) => { e.stopPropagation(); setEditingClient({...client}); setIsEditModalOpen(true); }} 
+                  onClick={() => openEditModal(client)}
                   className="p-2 bg-zinc-950 text-zinc-400 hover:text-blue-400 rounded-xl border border-zinc-800 transition-colors"
-                  title="Editar Alumno"
+                  title="Editar"
                 >
-                  <Edit size={16} />
+                  <Edit size={16}/>
                 </button>
                 <button 
-                  onClick={(e) => { e.stopPropagation(); onDeleteClient(client.id); }} 
-                  className="p-2 bg-zinc-950 text-zinc-400 hover:text-red-500 rounded-xl border border-zinc-800 ml-1 transition-colors"
-                  title="Eliminar Alumno"
+                  onClick={() => onDeleteClient(client.id)}
+                  className="p-2 bg-zinc-950 text-zinc-400 hover:text-red-500 rounded-xl border border-zinc-800 transition-colors"
+                  title="Eliminar"
                 >
-                  <Trash2 size={16} />
+                  <Trash2 size={16}/>
                 </button>
-                <ChevronRight size={20} className="text-zinc-700 group-hover:text-yellow-400 ml-2 transition-colors" />
+                
+                <div className="ml-auto text-zinc-600 group-hover:text-yellow-400 transition-colors">
+                  <ChevronRight size={20}/>
+                </div>
               </div>
             </div>
           ))
@@ -119,83 +185,82 @@ export default function ClientsView({ clients, navigateTo, onUpdateClient, onDel
           <div className="col-span-full flex flex-col items-center justify-center py-20 bg-zinc-900/30 rounded-[2rem] border border-dashed border-zinc-800">
             <User size={48} className="mb-4 opacity-20 text-zinc-500" />
             <p className="text-zinc-500 font-bold uppercase tracking-widest text-sm">
-              {searchTerm ? 'No se encontraron resultados' : 'Aún no tienes alumnos registrados'}
+              {searchTerm ? 'No se encontraron atletas' : 'No tienes atletas registrados'}
             </p>
           </div>
         )}
       </div>
 
-      {/* MODAL DE EDICIÓN */}
-      {isEditModalOpen && editingClient && (
+      {/* MODAL CREAR / EDITAR */}
+      {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 animate-in fade-in">
-          <div className="bg-zinc-950 w-full max-w-md rounded-[2rem] border border-zinc-800 shadow-2xl overflow-hidden">
+          <div className="bg-zinc-950 w-full max-w-md rounded-[2rem] border border-zinc-800 shadow-2xl relative overflow-hidden">
+            
             <div className="flex justify-between items-center p-6 border-b border-zinc-800 bg-zinc-900/50">
-              <h2 className="text-xl font-black text-white uppercase italic tracking-tighter">Editar Atleta</h2>
-              <button onClick={() => setIsEditModalOpen(false)} className="text-zinc-500 hover:text-white bg-zinc-800 p-2 rounded-full transition-colors">
+              <h2 className="text-xl font-black text-white uppercase italic tracking-tighter flex items-center gap-2">
+                {editingClient ? 'Editar Atleta' : 'Nuevo Atleta'}
+              </h2>
+              <button onClick={() => setIsModalOpen(false)} className="text-zinc-500 hover:text-white bg-zinc-800 p-2 rounded-full transition-colors">
                 <X size={20} />
               </button>
             </div>
             
-            <form onSubmit={(e) => { e.preventDefault(); onUpdateClient(editingClient); setIsEditModalOpen(false); }} className="p-6 space-y-5">
+            <form onSubmit={handleSubmit} className="p-6 space-y-5">
               <div>
-                <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2 flex items-center gap-1">
-                  <User size={12}/> Nombre Completo
-                </label>
+                <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2">Nombre del Atleta</label>
                 <input 
                   type="text" 
                   required 
+                  placeholder="Ej. Juan Pérez"
                   className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white outline-none focus:border-yellow-400 transition-colors" 
-                  value={editingClient.name} 
-                  onChange={e => setEditingClient({...editingClient, name: e.target.value})} 
+                  value={formData.name} 
+                  onChange={e => setFormData({...formData, name: e.target.value})} 
                 />
               </div>
 
               <div>
-                <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2 flex items-center gap-1">
-                  <Mail size={12}/> Email (Opcional)
-                </label>
+                <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2">Correo Electrónico (Para vincular app)</label>
                 <input 
                   type="email" 
+                  placeholder="ejemplo@correo.com"
                   className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white outline-none focus:border-yellow-400 transition-colors" 
-                  value={editingClient.email || ''} 
-                  onChange={e => setEditingClient({...editingClient, email: e.target.value})} 
+                  value={formData.email} 
+                  onChange={e => setFormData({...formData, email: e.target.value})} 
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2 flex items-center gap-1">
-                    <Dumbbell size={12}/> Plan Asignado
-                  </label>
-                  <select 
-                    required
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white text-sm outline-none focus:border-yellow-400 transition-colors" 
-                    value={editingClient.plan} 
-                    onChange={e => setEditingClient({...editingClient, plan: e.target.value})}
-                  >
-                    <option value="">Seleccionar...</option>
-                    {trainerPlans.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
-                    <option value="Personalizado">Personalizado</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2 flex items-center gap-1">
-                    <CalendarIcon size={12}/> Fecha de Cobro
-                  </label>
-                  <input 
-                    type="date" 
-                    required
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white text-sm outline-none focus:border-yellow-400 transition-colors" 
-                    value={editingClient.startDate || ''} 
-                    onChange={e => setEditingClient({...editingClient, startDate: e.target.value})} 
-                  />
-                </div>
+              <div>
+                <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2">Plan Asignado (Plantilla)</label>
+                <select 
+                  className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white outline-none focus:border-yellow-400 transition-colors text-sm" 
+                  value={formData.plan} 
+                  onChange={e => setFormData({...formData, plan: e.target.value})}
+                >
+                  <option value="">Seleccionar un plan...</option>
+                  {safeRoutines.map(r => (
+                    <option key={r.id} value={r.name}>{r.name}</option>
+                  ))}
+                  {safeRoutines.length === 0 && (
+                    <option disabled>No hay rutinas creadas</option>
+                  )}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2">Fecha Base de Cobro</label>
+                <input 
+                  type="date" 
+                  required
+                  className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white outline-none focus:border-yellow-400 transition-colors [color-scheme:dark]" 
+                  value={formData.startDate} 
+                  onChange={e => setFormData({...formData, startDate: e.target.value})} 
+                />
               </div>
 
               <div className="pt-4 border-t border-zinc-800 flex gap-3">
                 <button 
                   type="button" 
-                  onClick={() => setIsEditModalOpen(false)} 
+                  onClick={() => setIsModalOpen(false)} 
                   className="flex-1 py-4 text-zinc-400 font-bold uppercase text-xs rounded-xl bg-black border border-zinc-800 hover:bg-zinc-900 transition-colors"
                 >
                   Cancelar
@@ -204,10 +269,11 @@ export default function ClientsView({ clients, navigateTo, onUpdateClient, onDel
                   type="submit" 
                   className="flex-1 bg-yellow-400 hover:bg-yellow-300 text-black font-black py-4 rounded-xl uppercase text-xs tracking-widest transition-colors shadow-lg shadow-yellow-400/20"
                 >
-                  Guardar
+                  {editingClient ? 'Guardar Cambios' : 'Crear Atleta'}
                 </button>
               </div>
             </form>
+
           </div>
         </div>
       )}
