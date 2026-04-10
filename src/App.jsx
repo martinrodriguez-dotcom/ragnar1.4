@@ -267,7 +267,8 @@ export default function App() {
         {currentView === 'clients' && (
           <ClientsView 
             clients={clients} 
-            routines={routines} 
+            settings={settings}
+            routines={routines}
             navigateTo={navigateTo} 
             onAddClient={handleAddClient} 
             onUpdateClient={handleUpdateClient} 
