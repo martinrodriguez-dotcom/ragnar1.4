@@ -28,7 +28,7 @@ export default function App() {
   const [studentData, setStudentData] = useState(null);
   const [loadingAuth, setLoadingAuth] = useState(true);
   
-  // NUEVO: Estado para evitar el parpadeo visual del Coach
+  // Estado para evitar el parpadeo visual del Coach
   const [loadingCoachData, setLoadingCoachData] = useState(true); 
 
   // Parámetro de invitación mágica por URL
@@ -78,10 +78,10 @@ export default function App() {
   useEffect(() => {
     if (userRole !== 'coach') return;
 
-    // Escuchar Atletas (Y apagar la carga visual cuando lleguen)
+    // Escuchar Atletas
     const unsubClients = onSnapshot(collection(db, 'clients'), (snapshot) => {
       setClients(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-      setLoadingCoachData(false); // <--- AQUÍ SE EVITA EL PARPADEO
+      setLoadingCoachData(false);
     });
 
     // Escuchar Plantillas de Rutinas
@@ -131,6 +131,18 @@ export default function App() {
   // ==========================================
 
   // --- CLIENTES ---
+  const handleAddClient = async (clientData) => {
+    try {
+      await addDoc(collection(db, 'clients'), {
+        ...clientData,
+        createdAt: new Date(),
+        active: true // Por defecto lo creamos activo
+      });
+    } catch (error) { 
+      console.error("Error agregando cliente: ", error); 
+    }
+  };
+
   const handleUpdateClient = async (updatedClient) => {
     try {
       const { id, ...data } = updatedClient;
@@ -205,7 +217,6 @@ export default function App() {
 
   // --- RENDERIZADO CONDICIONAL ---
 
-  // MODIFICADO: Mantenemos el spinner si la Auth carga, o si el Coach aún no recibe sus datos.
   if (loadingAuth || (userRole === 'coach' && loadingCoachData)) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
@@ -247,13 +258,18 @@ export default function App() {
       <main className="flex-1 overflow-y-auto bg-zinc-950 p-4 md:p-8 custom-scrollbar relative">
         
         {currentView === 'dashboard' && (
-          <DashboardView clients={clients} navigateTo={navigateTo} />
+          <DashboardView 
+            clients={clients} 
+            navigateTo={navigateTo} 
+          />
         )}
         
         {currentView === 'clients' && (
           <ClientsView 
             clients={clients} 
+            routines={routines} // <- CRÍTICO: pasamos las rutinas por si la vista las pide al crear
             navigateTo={navigateTo} 
+            onAddClient={handleAddClient} 
             onUpdateClient={handleUpdateClient} 
             onDeleteClient={handleDeleteClient} 
           />
@@ -264,6 +280,8 @@ export default function App() {
             client={selectedClient} 
             goBack={() => navigateTo('clients')} 
             exercisesLibrary={exercisesLibrary} 
+            routines={routines} // <- CRÍTICO: por si asignamos plan desde el detalle
+            onUpdateClient={handleUpdateClient} // <- CRÍTICO: por si guardamos info en el detalle
           />
         )}
         
@@ -308,6 +326,7 @@ export default function App() {
         {currentView === 'payments' && (
           <PaymentsView 
             clients={clients} 
+            onUpdateClient={handleUpdateClient} // <- CRÍTICO: por si marcamos pagos
           />
         )}
 
