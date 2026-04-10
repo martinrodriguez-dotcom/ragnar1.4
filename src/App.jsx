@@ -136,7 +136,7 @@ export default function App() {
       await addDoc(collection(db, 'clients'), {
         ...clientData,
         createdAt: new Date(),
-        active: true // Por defecto lo creamos activo
+        active: true
       });
     } catch (error) { 
       console.error("Error agregando cliente: ", error); 
@@ -267,7 +267,7 @@ export default function App() {
         {currentView === 'clients' && (
           <ClientsView 
             clients={clients} 
-            routines={routines} // <- CRÍTICO: pasamos las rutinas por si la vista las pide al crear
+            routines={routines} 
             navigateTo={navigateTo} 
             onAddClient={handleAddClient} 
             onUpdateClient={handleUpdateClient} 
@@ -280,8 +280,8 @@ export default function App() {
             client={selectedClient} 
             goBack={() => navigateTo('clients')} 
             exercisesLibrary={exercisesLibrary} 
-            routines={routines} // <- CRÍTICO: por si asignamos plan desde el detalle
-            onUpdateClient={handleUpdateClient} // <- CRÍTICO: por si guardamos info en el detalle
+            routines={routines}
+            onUpdateClient={handleUpdateClient}
           />
         )}
         
@@ -326,7 +326,7 @@ export default function App() {
         {currentView === 'payments' && (
           <PaymentsView 
             clients={clients} 
-            onUpdateClient={handleUpdateClient} // <- CRÍTICO: por si marcamos pagos
+            onUpdateClient={handleUpdateClient} 
           />
         )}
 
