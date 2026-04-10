@@ -4,7 +4,7 @@ import { Search, Plus, User, Trash2, Edit, Dumbbell, Calendar, Check, ChevronRig
 export default function ClientsView({ 
   clients = [], 
   settings = null, 
-  routines = [], // Recibimos routines por si en el futuro decides mostrar la rutina asignada aquí
+  routines = [], 
   navigateTo, 
   onAddClient, 
   onUpdateClient, 
@@ -22,12 +22,12 @@ export default function ClientsView({
     startDate: new Date().toISOString().split('T')[0]
   });
 
-  // Aseguramos que siempre sean arrays para evitar errores si Firebase tarda en cargar
   const safeClients = Array.isArray(clients) ? clients : [];
   
-  // Extraemos los planes desde settings (o ponemos uno por defecto si no hay nada configurado)
+  // SOLUCIÓN AL ERROR #31: Extraemos SOLO el string del nombre del plan.
+  // Si el plan es un objeto {name, price, etc}, sacamos solo el .name
   const safePlans = settings?.plans && Array.isArray(settings.plans) && settings.plans.length > 0 
-    ? settings.plans 
+    ? settings.plans.map(p => typeof p === 'object' ? p.name : p) 
     : ['Plan Base'];
 
   const filteredClients = safeClients.filter(c => 
@@ -40,7 +40,7 @@ export default function ClientsView({
     setFormData({
       name: '',
       email: '',
-      plan: safePlans[0], // Usamos el primer plan de la lista de configuración
+      plan: safePlans[0] || 'Plan Base',
       startDate: new Date().toISOString().split('T')[0]
     });
     setIsModalOpen(true);
@@ -48,10 +48,14 @@ export default function ClientsView({
 
   const openEditModal = (client) => {
     setEditingClient(client);
+    
+    // Blindaje extra por si el plan del cliente se guardó como objeto por error en el pasado
+    const clientPlanName = typeof client.plan === 'object' ? client.plan.name : client.plan;
+
     setFormData({
       name: client.name || '',
       email: client.email || '',
-      plan: client.plan || safePlans[0],
+      plan: clientPlanName || safePlans[0] || 'Plan Base',
       startDate: client.startDate || new Date().toISOString().split('T')[0]
     });
     setIsModalOpen(true);
@@ -88,7 +92,6 @@ export default function ClientsView({
   return (
     <div className="max-w-6xl mx-auto animate-in fade-in pb-10">
       
-      {/* HEADER Y BUSCADOR */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
         <div>
           <h2 className="text-3xl font-black text-white uppercase italic tracking-tighter">Mis Atletas</h2>
@@ -117,7 +120,6 @@ export default function ClientsView({
         </div>
       </div>
 
-      {/* LISTADO DE ATLETAS */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {filteredClients.length > 0 ? (
           filteredClients.map(client => (
@@ -126,7 +128,6 @@ export default function ClientsView({
               onClick={() => navigateTo('client-detail', client)}
               className="bg-zinc-900 border border-zinc-800 p-5 rounded-3xl flex flex-col justify-between group hover:border-yellow-400/50 transition-all shadow-md cursor-pointer relative overflow-hidden"
             >
-              {/* Etiqueta de App Vinculada */}
               <div className={`absolute top-0 right-0 px-3 py-1 text-[9px] font-black uppercase tracking-widest rounded-bl-xl ${client.studentUserId ? 'bg-green-500/20 text-green-500' : 'bg-zinc-800 text-zinc-500'}`}>
                 {client.studentUserId ? 'App Vinculada' : 'Pendiente'}
               </div>
@@ -145,14 +146,13 @@ export default function ClientsView({
               
               <div className="space-y-2 mb-6">
                 <div className="flex items-center gap-2 text-xs text-zinc-400 font-medium bg-black/30 p-2 rounded-xl border border-zinc-800/50">
-                  <Dumbbell size={14} className="text-yellow-400"/> {client.plan || 'Plan Base'}
+                  <Dumbbell size={14} className="text-yellow-400"/> {typeof client.plan === 'object' ? client.plan.name : (client.plan || 'Plan Base')}
                 </div>
                 <div className="flex items-center gap-2 text-xs text-zinc-400 font-medium bg-black/30 p-2 rounded-xl border border-zinc-800/50">
                   <Calendar size={14} className="text-yellow-400"/> Inicio: {client.startDate ? new Date(client.startDate).toLocaleDateString('es-ES', {timeZone: 'UTC'}) : 'No definido'}
                 </div>
               </div>
 
-              {/* BOTONES DE ACCIÓN */}
               <div className="flex items-center gap-2 pt-4 border-t border-zinc-800/50" onClick={e => e.stopPropagation()}>
                 {!client.studentUserId && (
                   <button 
@@ -194,7 +194,6 @@ export default function ClientsView({
         )}
       </div>
 
-      {/* MODAL CREAR / EDITAR */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 animate-in fade-in">
           <div className="bg-zinc-950 w-full max-w-md rounded-[2rem] border border-zinc-800 shadow-2xl relative overflow-hidden">
