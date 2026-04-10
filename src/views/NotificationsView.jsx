@@ -6,7 +6,7 @@ import {
 import { db } from '../firebase';
 import { 
   Bell, Dumbbell, AlertTriangle, MessageSquare, CheckCircle, 
-  Trash2, Archive, RotateCcw, Check, Inbox
+  Trash2, Archive, RotateCcw, Check, Inbox, X, Clock 
 } from 'lucide-react';
 
 export default function NotificationsView() {
@@ -256,23 +256,5 @@ export default function NotificationsView() {
       </div>
 
     </div>
-  );
-}
-
-// Sub-componente simple para el icono de reloj que falta
-function Clock({ size }) {
-  return (
-    <svg 
-      width={size} 
-      height={size} 
-      viewBox="0 0 24 24" 
-      fill="none" 
-      stroke="currentColor" 
-      strokeWidth="2" 
-      strokeLinecap="round" 
-      strokeLinejoin="round"
-    >
-      <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-    </svg>
   );
 }
