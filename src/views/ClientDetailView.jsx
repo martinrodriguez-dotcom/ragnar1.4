@@ -12,7 +12,7 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary = []
   const [date, setDate] = useState(new Date());
   
   // --- ESTADOS DE LA SESIÓN DEL DÍA ---
-  const [dailySession, setDailySession] = useState([]); // Arreglo de ejercicios
+  const [dailySession, setDailySession] = useState([]); 
   const [hydrationTarget, setHydrationTarget] = useState('');
   const [cardioTargetMinutes, setCardioTargetMinutes] = useState('');
   const [cardioTargetIntensity, setCardioTargetIntensity] = useState('Baja');
@@ -26,15 +26,16 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary = []
   const [isExtrasModalOpen, setIsExtrasModalOpen] = useState(false);
   const [editingExerciseIndex, setEditingExerciseIndex] = useState(null);
 
-  // --- FORMULARIO DE EJERCICIO (NUEVA ESTRUCTURA DINÁMICA) ---
+  // --- FORMULARIO DE EJERCICIO ---
   const [exForm, setExForm] = useState({
     name: '',
     videoUrl: '',
-    plannedSets: [{ reps: '', rir: '2' }] // Nace con 1 serie base
+    plannedSets: [{ reps: '', rir: '2' }] 
   });
 
   // --- FORMATEO DE FECHAS PARA FIREBASE ---
   const formatDateId = (d) => {
+    if (!d) return '';
     const year = d.getFullYear();
     const month = String(d.getMonth() + 1).padStart(2, '0');
     const day = String(d.getDate()).padStart(2, '0');
@@ -45,7 +46,7 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary = []
 
   // --- ESCUCHA DE DATOS EN TIEMPO REAL ---
   useEffect(() => {
-    if (!client) return;
+    if (!client?.id) return;
 
     const fetchAllSessions = async () => {
       try {
@@ -86,40 +87,39 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary = []
     setLoading(true);
   };
 
-  // --- MANEJO DE SERIES DINÁMICAS (NUEVO) ---
+  // --- MANEJO DE SERIES DINÁMICAS ---
   const addSet = () => {
-    setExForm({
-      ...exForm,
-      plannedSets: [...exForm.plannedSets, { reps: '', rir: '2' }]
-    });
+    setExForm(prev => ({
+      ...prev,
+      plannedSets: [...prev.plannedSets, { reps: '', rir: '2' }]
+    }));
   };
 
   const removeSet = (indexToRemove) => {
-    setExForm({
-      ...exForm,
-      plannedSets: exForm.plannedSets.filter((_, idx) => idx !== indexToRemove)
-    });
+    setExForm(prev => ({
+      ...prev,
+      plannedSets: prev.plannedSets.filter((_, idx) => idx !== indexToRemove)
+    }));
   };
 
   const updateSetField = (index, field, value) => {
     const updatedSets = [...exForm.plannedSets];
-    updatedSets[index][field] = value;
+    updatedSets[index] = { ...updatedSets[index], [field]: value };
     setExForm({ ...exForm, plannedSets: updatedSets });
   };
 
   // --- ABRIR MODAL DE EJERCICIO ---
   const openExerciseModal = (index = null) => {
     if (index !== null) {
-      // MODO EDITAR
+      // MODO EDITAR: Adaptación ultra-segura para evitar crasheos con datos viejos
       const ex = dailySession[index];
-      
-      // Adaptación inteligente por si se edita un ejercicio de formato viejo
       let loadedSets = ex.plannedSets;
-      if (!loadedSets || loadedSets.length === 0) {
-        const fallbackCount = parseInt(ex.sets || 1);
+      
+      if (!loadedSets || !Array.isArray(loadedSets) || loadedSets.length === 0) {
+        const fallbackCount = Math.max(1, parseInt(ex.sets) || 1);
         loadedSets = Array.from({ length: fallbackCount }).map(() => ({
-          reps: ex.reps || '',
-          rir: ex.rir || '2'
+          reps: String(ex.reps || ''),
+          rir: String(ex.rir || '2')
         }));
       }
 
@@ -132,8 +132,8 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary = []
     } else {
       // MODO AGREGAR
       setExForm({
-        name: exercisesLibrary.length > 0 ? exercisesLibrary[0].name : '',
-        videoUrl: exercisesLibrary.length > 0 ? exercisesLibrary[0].videoUrl : '',
+        name: exercisesLibrary?.length > 0 ? exercisesLibrary[0].name : '',
+        videoUrl: exercisesLibrary?.length > 0 ? exercisesLibrary[0].videoUrl : '',
         plannedSets: [{ reps: '', rir: '2' }]
       });
       setEditingExerciseIndex(null);
@@ -145,9 +145,8 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary = []
   const handleSaveExercise = async (e) => {
     e.preventDefault();
     
-    // Verificamos que tenga nombre y que al menos la primera serie tenga reps escritas
-    if (!exForm.name || exForm.plannedSets.length === 0 || !exForm.plannedSets[0].reps) {
-      alert("Por favor completa el nombre y las repeticiones.");
+    if (!exForm.name || !exForm.plannedSets || exForm.plannedSets.length === 0) {
+      alert("Por favor completa el nombre del ejercicio.");
       return;
     }
 
@@ -156,11 +155,9 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary = []
     const exerciseToSave = {
       name: String(exForm.name),
       videoUrl: String(exForm.videoUrl || ''),
-      // Mantenemos sets, reps y rir globales por compatibilidad de lectura, pero usando la data de la primera serie
       sets: String(exForm.plannedSets.length),
-      reps: String(exForm.plannedSets[0].reps), 
-      rir: String(exForm.plannedSets[0].rir),
-      // Nuevo formato exacto serie por serie
+      reps: String(exForm.plannedSets[0]?.reps || ''), 
+      rir: String(exForm.plannedSets[0]?.rir || '2'),
       plannedSets: exForm.plannedSets,
       actualSets: [] 
     };
@@ -223,20 +220,23 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary = []
     }
   };
 
-  // --- COPIAR RUTINA COMPLETA (CONVERSOR INTELIGENTE) ---
+  // --- COPIAR RUTINA COMPLETA (CONVERSOR INTELIGENTE ANTI-CRASHEO) ---
   const handleAssignRoutine = async (routineObj) => {
     if (!window.confirm(`¿Copiar la rutina "${routineObj.name}" a este día? Se reemplazarán los ejercicios actuales.`)) return;
     try {
       const formattedExercises = routineObj.exercises.map(ex => {
-        // Si la rutina copiada ya tiene formato nuevo, lo respeta. Si no, lo crea desde el global.
-        const defaultSetsNum = parseInt(ex.sets || '3');
-        const plannedSets = ex.plannedSets || Array.from({ length: defaultSetsNum }).map(() => ({
-          reps: String(ex.reps || '10'),
-          rir: String(ex.rir || '2')
-        }));
+        let plannedSets = ex.plannedSets;
+        
+        if (!plannedSets || !Array.isArray(plannedSets) || plannedSets.length === 0) {
+           const defaultSetsNum = Math.max(1, parseInt(ex.sets) || 3);
+           plannedSets = Array.from({ length: defaultSetsNum }).map(() => ({
+             reps: String(ex.reps || '10'),
+             rir: String(ex.rir || '2')
+           }));
+        }
 
         return {
-          name: String(ex.name),
+          name: String(ex.name || 'Ejercicio'),
           videoUrl: String(ex.videoUrl || ''),
           sets: String(plannedSets.length),
           reps: String(plannedSets[0]?.reps || '10'),
@@ -272,7 +272,7 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary = []
         </button>
         <div>
           <h2 className="text-3xl font-black text-white uppercase italic tracking-tighter leading-none">
-            {client.name}
+            {client.name || 'Atleta'}
           </h2>
           <div className="flex items-center gap-2 mt-2">
             <span className="px-2 py-0.5 bg-yellow-400/10 border border-yellow-400/20 text-yellow-400 text-[10px] font-black uppercase tracking-widest rounded-md">
@@ -306,7 +306,7 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary = []
             <h3 className="text-white font-bold uppercase text-sm tracking-widest mb-4 flex items-center gap-2">
               <Save size={16} className="text-yellow-400"/> Pegar Rutina Guardada
             </h3>
-            {routines.length > 0 ? (
+            {routines && routines.length > 0 ? (
               <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar pr-2">
                 {routines.map(routine => (
                   <button 
@@ -396,57 +396,56 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary = []
               {loading ? (
                 <div className="flex justify-center py-10"><div className="animate-spin rounded-full h-8 w-8 border-t-2 border-yellow-400"></div></div>
               ) : dailySession.length > 0 ? (
-                dailySession.map((ex, idx) => (
-                  <div key={idx} className="bg-black/60 border border-zinc-800 rounded-2xl p-5 hover:border-zinc-700 transition-colors group">
-                    <div className="flex justify-between items-start">
-                      <div className="flex gap-4 w-full">
-                        <div className="w-10 h-10 bg-yellow-400/10 text-yellow-400 rounded-xl flex items-center justify-center font-black text-lg border border-yellow-400/20 shrink-0">
-                          {idx + 1}
-                        </div>
-                        <div className="flex-1">
-                          <h4 className="text-white font-black text-lg uppercase tracking-tighter leading-none mb-3">{ex.name}</h4>
-                          
-                          {/* DESGLOSE SERIE POR SERIE */}
-                          <div className="space-y-1.5">
-                            {ex.plannedSets ? (
-                              ex.plannedSets.map((set, sIdx) => (
+                dailySession.map((ex, idx) => {
+                  // Reconstrucción ultra-segura para el renderizado (Evita crasheo por datos NaN/Undefined)
+                  const safeSets = ex.plannedSets || Array.from({ length: Math.max(1, parseInt(ex.sets) || 1) }).map(() => ({
+                    reps: String(ex.reps || ''),
+                    rir: String(ex.rir || '')
+                  }));
+
+                  return (
+                    <div key={idx} className="bg-black/60 border border-zinc-800 rounded-2xl p-5 hover:border-zinc-700 transition-colors group">
+                      <div className="flex justify-between items-start">
+                        <div className="flex gap-4 w-full">
+                          <div className="w-10 h-10 bg-yellow-400/10 text-yellow-400 rounded-xl flex items-center justify-center font-black text-lg border border-yellow-400/20 shrink-0">
+                            {idx + 1}
+                          </div>
+                          <div className="flex-1">
+                            <h4 className="text-white font-black text-lg uppercase tracking-tighter leading-none mb-3">{ex.name}</h4>
+                            
+                            {/* DESGLOSE SERIE POR SERIE SEGURO */}
+                            <div className="space-y-1.5">
+                              {safeSets.map((set, sIdx) => (
                                 <div key={sIdx} className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest">
                                   <span className="text-zinc-500 w-12 shrink-0">Set {sIdx + 1}</span>
-                                  <span className="text-white bg-zinc-800 px-2 py-1 rounded border border-zinc-700">{set.reps} Reps</span>
-                                  <span className="text-yellow-400 bg-yellow-400/10 px-2 py-1 rounded border border-yellow-400/20">RIR {set.rir}</span>
+                                  <span className="text-white bg-zinc-800 px-2 py-1 rounded border border-zinc-700">{set.reps || '-'} Reps</span>
+                                  {set.rir && <span className="text-yellow-400 bg-yellow-400/10 px-2 py-1 rounded border border-yellow-400/20">RIR {set.rir}</span>}
                                 </div>
-                              ))
-                            ) : (
-                              /* Modo Legado (si no tenía plannedSets) */
-                              <div className="flex gap-2 text-[10px] font-black uppercase tracking-widest">
-                                <span className="text-white bg-zinc-800 px-2 py-1 rounded border border-zinc-700">{ex.sets} Series</span>
-                                <span className="text-white bg-zinc-800 px-2 py-1 rounded border border-zinc-700">{ex.reps} Reps</span>
-                                {ex.rir && <span className="text-yellow-400 bg-yellow-400/10 px-2 py-1 rounded border border-yellow-400/20">RIR {ex.rir}</span>}
-                              </div>
-                            )}
+                              ))}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                      
-                      <div className="flex items-center gap-2 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button 
-                          onClick={() => openExerciseModal(idx)}
-                          className="p-2 text-zinc-400 hover:text-blue-400 bg-zinc-900 hover:bg-zinc-800 rounded-lg border border-zinc-800 transition-colors"
-                          title="Editar Ejercicio"
-                        >
-                          <Edit size={16}/>
-                        </button>
-                        <button 
-                          onClick={() => handleDeleteExercise(idx)}
-                          className="p-2 text-zinc-400 hover:text-red-500 bg-zinc-900 hover:bg-zinc-800 rounded-lg border border-zinc-800 transition-colors"
-                          title="Eliminar Ejercicio"
-                        >
-                          <Trash2 size={16}/>
-                        </button>
+                        
+                        <div className="flex items-center gap-2 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                          <button 
+                            onClick={() => openExerciseModal(idx)}
+                            className="p-2 text-zinc-400 hover:text-blue-400 bg-zinc-900 hover:bg-zinc-800 rounded-lg border border-zinc-800 transition-colors"
+                            title="Editar Ejercicio"
+                          >
+                            <Edit size={16}/>
+                          </button>
+                          <button 
+                            onClick={() => handleDeleteExercise(idx)}
+                            className="p-2 text-zinc-400 hover:text-red-500 bg-zinc-900 hover:bg-zinc-800 rounded-lg border border-zinc-800 transition-colors"
+                            title="Eliminar Ejercicio"
+                          >
+                            <Trash2 size={16}/>
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))
+                  );
+                })
               ) : (
                 <div className="flex flex-col items-center justify-center py-20 border border-dashed border-zinc-800 rounded-3xl bg-black/30">
                   <Dumbbell size={48} className="text-zinc-800 mb-4"/>
@@ -488,8 +487,8 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary = []
                   }}
                 >
                   <option value="" disabled>Elige un ejercicio...</option>
-                  {exercisesLibrary.map(ex => (
-                    <option key={ex.id} value={ex.name}>{ex.name}</option>
+                  {exercisesLibrary?.map(ex => (
+                    <option key={ex.id || Math.random()} value={ex.name}>{ex.name}</option>
                   ))}
                 </select>
               </div>
@@ -498,7 +497,7 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary = []
                 <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-3">Series del Ejercicio</label>
                 
                 <div className="space-y-3">
-                  {exForm.plannedSets.map((set, idx) => (
+                  {exForm.plannedSets?.map((set, idx) => (
                     <div key={idx} className="flex items-center gap-2 bg-black/40 p-2 rounded-xl border border-zinc-800 animate-in slide-in-from-bottom-2">
                       
                       <div className="w-8 h-8 flex items-center justify-center bg-zinc-900 rounded-lg text-[10px] font-black text-zinc-500 shrink-0">
