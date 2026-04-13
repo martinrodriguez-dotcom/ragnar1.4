@@ -4,7 +4,8 @@ import 'react-calendar/dist/Calendar.css';
 import { 
   Dumbbell, CheckCircle, User, Menu, X, LogOut, MessageSquare, Send, 
   AlertTriangle, Trophy, CreditCard, ExternalLink, ChevronRight, Video, 
-  Bell, Users, TrendingUp, Calendar as CalendarIcon, ChevronLeft, Timer, Clock
+  Bell, Users, TrendingUp, Calendar as CalendarIcon, ChevronLeft, Timer, Clock,
+  Droplets, Activity // Iconos nuevos para hidratación y cardio
 } from 'lucide-react';
 import { doc, getDoc, collection, onSnapshot, setDoc, addDoc, query, orderBy, updateDoc } from 'firebase/firestore';
 import { getAuth, signOut } from 'firebase/auth';
@@ -21,6 +22,11 @@ export default function StudentView({ clientId }) {
   const [isSessionFinalized, setIsSessionFinalized] = useState(false);
   const [allSessionsIds, setAllSessionsIds] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  // --- ESTADOS DE COMPLEMENTOS (NUEVO) ---
+  const [hydration, setHydration] = useState('');
+  const [cardioMinutes, setCardioMinutes] = useState('');
+  const [cardioIntensity, setCardioIntensity] = useState('Baja');
 
   // --- ESTADOS DE PAGO ---
   const [hasPaidMonth, setHasPaidMonth] = useState(true); 
@@ -87,11 +93,9 @@ export default function StudentView({ clientId }) {
 
         if (!isPaid && clientData?.startDate) {
           const today = new Date();
-          // Aseguramos que la fecha se lea correctamente sin desfases de zona horaria
           const startDay = new Date(clientData.startDate + 'T12:00:00Z').getUTCDate(); 
           const grace = parseInt(clientData.graceDays || 0);
           
-          // Calculamos la fecha límite (Día de cobro + Días de Gracia)
           const deadline = new Date(today.getFullYear(), today.getMonth(), startDay);
           deadline.setDate(deadline.getDate() + grace); 
 
@@ -102,7 +106,6 @@ export default function StudentView({ clientId }) {
 
         setHasPaidMonth(isPaid);
 
-        // Si la suscripción venció, lo enviamos directo al perfil para que vea los datos de pago
         if (!isPaid) {
           setCurrentView('profile');
           setShowPaymentModal(true);
@@ -141,7 +144,7 @@ export default function StudentView({ clientId }) {
     checkYesterday();
   }, [client]);
 
-  // --- EFECTO 3: SINCRONIZACIÓN DE RUTINAS ---
+  // --- EFECTO 3: SINCRONIZACIÓN DE RUTINAS Y COMPLEMENTOS ---
   useEffect(() => {
     if (!client || !hasPaidMonth) return;
     
@@ -152,11 +155,18 @@ export default function StudentView({ clientId }) {
     const sessionDocRef = doc(db, 'clients', client.id, 'sessions', currentDateId);
     const unsubDaily = onSnapshot(sessionDocRef, (docSnap) => {
       if (docSnap.exists()) {
-        setDailySession(docSnap.data().exercises || []);
-        setIsSessionFinalized(docSnap.data().isFinalized || false);
+        const data = docSnap.data();
+        setDailySession(data.exercises || []);
+        setIsSessionFinalized(data.isFinalized || false);
+        setHydration(data.hydration || '');
+        setCardioMinutes(data.cardioMinutes || '');
+        setCardioIntensity(data.cardioIntensity || 'Baja');
       } else {
         setDailySession([]);
         setIsSessionFinalized(false);
+        setHydration('');
+        setCardioMinutes('');
+        setCardioIntensity('Baja');
       }
     });
 
@@ -278,6 +288,23 @@ export default function StudentView({ clientId }) {
 
   const handleGoToPay = () => { 
     window.open(`https://www.mercadopago.com.ar/`, '_blank'); 
+  };
+
+  // --- GUARDAR DETALLES ADICIONALES (HIDRATACIÓN/CARDIO) ---
+  const handleUpdateSessionDetails = async (field, value) => {
+    if (isSessionFinalized || !hasPaidMonth) return;
+
+    if (field === 'hydration') setHydration(value);
+    if (field === 'cardioMinutes') setCardioMinutes(value);
+    if (field === 'cardioIntensity') setCardioIntensity(value);
+
+    try {
+      await setDoc(doc(db, 'clients', clientId, 'sessions', currentDateId), {
+        [field]: value
+      }, { merge: true });
+    } catch (error) {
+      console.error(error);
+    }
   };
 
   const handleUpdateSet = async (exerciseIndex, setIndex, field, value) => {
@@ -491,7 +518,6 @@ export default function StudentView({ clientId }) {
               Salón Ragnar {!hasPaidMonth && <Clock size={20}/>}
             </button>
             
-            {/* El chat y perfil siempre disponibles aunque deba */}
             <button 
               onClick={() => { setCurrentView('chat'); setIsMenuOpen(false); }} 
               className={`text-left flex items-center gap-4 ${currentView === 'chat' ? 'text-yellow-400' : 'text-zinc-600'}`}
@@ -590,21 +616,102 @@ export default function StudentView({ clientId }) {
                 </div>
             </div>
 
+            {/* --- PANEL DE CONFIGURACIÓN DE SESIÓN (TIMER, HIDRATACIÓN, CARDIO) --- */}
             {!isSessionFinalized && (
-              <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-4 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <Clock size={20} className="text-zinc-500" />
-                  <span className="text-[10px] font-black uppercase text-zinc-400 tracking-widest">Timer Descanso:</span>
+              <div className="space-y-3 mb-6">
+                
+                {/* TIMER DESCANSO */}
+                <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-4 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Clock size={20} className="text-zinc-500" />
+                    <span className="text-[10px] font-black uppercase text-zinc-400 tracking-widest">Timer Descanso:</span>
+                  </div>
+                  <div className="flex items-center gap-2 bg-black px-3 py-1 rounded-xl border border-zinc-800">
+                     <input 
+                       type="number" 
+                       className="bg-transparent text-yellow-400 font-black w-10 text-center outline-none" 
+                       value={restTime} 
+                       onChange={(e) => updatePreferredRest(e.target.value)} 
+                     />
+                     <span className="text-[10px] font-black text-zinc-600">seg</span>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2 bg-black px-3 py-1 rounded-xl border border-zinc-800">
-                   <input 
-                     type="number" 
-                     className="bg-transparent text-yellow-400 font-black w-10 text-center outline-none" 
-                     value={restTime} 
-                     onChange={(e) => updatePreferredRest(e.target.value)} 
-                   />
-                   <span className="text-[10px] font-black text-zinc-600">seg</span>
+
+                {/* HIDRATACIÓN Y CARDIO */}
+                <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-4 space-y-4">
+                  
+                   {/* HIDRATACIÓN */}
+                   <div className="flex items-center justify-between">
+                     <div className="flex items-center gap-3">
+                       <Droplets size={20} className="text-blue-400" />
+                       <span className="text-[10px] font-black uppercase text-zinc-400 tracking-widest">Hidratación:</span>
+                     </div>
+                     <div className="flex items-center gap-2 bg-black px-3 py-1 rounded-xl border border-zinc-800">
+                        <input
+                          type="number"
+                          step="0.1"
+                          placeholder="0.0"
+                          className="bg-transparent text-blue-400 font-black w-12 text-center outline-none"
+                          value={hydration}
+                          onChange={(e) => handleUpdateSessionDetails('hydration', e.target.value)}
+                        />
+                        <span className="text-[10px] font-black text-zinc-600">Lts</span>
+                     </div>
+                   </div>
+
+                   {/* CARDIO */}
+                   <div className="flex flex-col gap-3 pt-4 border-t border-zinc-800/50">
+                     <div className="flex items-center justify-between">
+                       <div className="flex items-center gap-3">
+                         <Activity size={20} className="text-red-400" />
+                         <span className="text-[10px] font-black uppercase text-zinc-400 tracking-widest">Cardio Extra:</span>
+                       </div>
+                       <div className="flex items-center gap-2 bg-black px-3 py-1 rounded-xl border border-zinc-800">
+                          <input
+                            type="number"
+                            placeholder="0"
+                            className="bg-transparent text-red-400 font-black w-12 text-center outline-none"
+                            value={cardioMinutes}
+                            onChange={(e) => handleUpdateSessionDetails('cardioMinutes', e.target.value)}
+                          />
+                          <span className="text-[10px] font-black text-zinc-600">Min</span>
+                       </div>
+                     </div>
+                     
+                     <div className="flex gap-2">
+                       {['Baja', 'Media', 'Alta'].map(level => (
+                         <button
+                           key={level}
+                           onClick={() => handleUpdateSessionDetails('cardioIntensity', level)}
+                           className={`flex-1 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-colors border ${cardioIntensity === level ? 'bg-red-500/20 text-red-400 border-red-500/30' : 'bg-black text-zinc-500 border-zinc-800 hover:border-zinc-700'}`}
+                         >
+                           {level}
+                         </button>
+                       ))}
+                     </div>
+                   </div>
+
                 </div>
+              </div>
+            )}
+
+            {/* RESUMEN DE COMPLEMENTOS CUANDO SE FINALIZA */}
+            {isSessionFinalized && (hydration || cardioMinutes) && (
+              <div className="flex gap-3 mb-6">
+                 {hydration && (
+                   <div className="bg-blue-500/10 border border-blue-500/20 rounded-2xl p-4 flex-1 flex flex-col items-center justify-center text-center">
+                     <Droplets size={24} className="text-blue-400 mb-2" />
+                     <span className="text-white font-black text-lg">{hydration} Lts</span>
+                     <span className="text-[10px] text-blue-400/60 uppercase tracking-widest font-black mt-1">Hidratación</span>
+                   </div>
+                 )}
+                 {cardioMinutes && (
+                   <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-4 flex-1 flex flex-col items-center justify-center text-center">
+                     <Activity size={24} className="text-red-400 mb-2" />
+                     <span className="text-white font-black text-lg">{cardioMinutes} Min</span>
+                     <span className="text-[10px] text-red-400/60 uppercase tracking-widest font-black mt-1">Cardio {cardioIntensity}</span>
+                   </div>
+                 )}
               </div>
             )}
 
@@ -617,7 +724,7 @@ export default function StudentView({ clientId }) {
                           <div className="w-8 h-8 rounded-xl bg-yellow-400/10 text-yellow-400 flex items-center justify-center font-black">
                             {exIdx + 1}
                           </div>
-                          <h3 className="font-bold text-lg uppercase tracking-tight text-white">{ex.name}</h3>
+                          <h3 className="font-bold text-lg uppercase tracking-tight leading-none text-white">{ex.name}</h3>
                         </div>
                         {ex.videoUrl && (
                           <a 
