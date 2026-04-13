@@ -22,14 +22,9 @@ import PaymentsView from './views/PaymentsView';
 import CalendarView from './views/CalendarView'; 
 
 export default function App() {
-  // --- RASTREADOR DE VERSIÓN ---
-  useEffect(() => {
-    console.log("🚀 [APP.JSX] VERSIÓN 3 CARGADA - El archivo principal se actualizó correctamente.");
-  }, []);
-
   // --- ESTADOS DE AUTENTICACIÓN ---
   const [user, setUser] = useState(null);
-  const [userRole, setUserRole] = useState(null); // 'coach', 'student', o null
+  const [userRole, setUserRole] = useState(null); 
   const [studentData, setStudentData] = useState(null);
   const [loadingAuth, setLoadingAuth] = useState(true);
   
@@ -48,7 +43,7 @@ export default function App() {
   const [exercisesLibrary, setExercisesLibrary] = useState([]);
   const [settings, setSettings] = useState(null);
 
-  // --- ESTADOS DE NOTIFICACIONES (TIEMPO REAL) ---
+  // --- ESTADOS DE NOTIFICACIONES ---
   const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
   const [systemNotifications, setSystemNotifications] = useState([]);
 
@@ -79,32 +74,27 @@ export default function App() {
     return () => unsubscribe();
   }, [auth]);
 
-  // 2. CARGA DE DATOS DEL COACH (Cerebro Global en Tiempo Real)
+  // 2. CARGA DE DATOS DEL COACH EN TIEMPO REAL
   useEffect(() => {
     if (userRole !== 'coach') return;
 
-    // Escuchar Atletas
     const unsubClients = onSnapshot(collection(db, 'clients'), (snapshot) => {
       setClients(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-      setLoadingCoachData(false); // Apagamos el spinner cuando los atletas ya cargaron
+      setLoadingCoachData(false);
     });
 
-    // Escuchar Plantillas de Rutinas
     const unsubRoutines = onSnapshot(collection(db, 'routines'), (snapshot) => {
       setRoutines(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
-    // Escuchar Librería de Ejercicios
     const unsubExercises = onSnapshot(collection(db, 'exercises'), (snapshot) => {
       setExercisesLibrary(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
-    // Escuchar Configuración General
     const unsubSettings = onSnapshot(doc(db, 'settings', 'general'), (docSnap) => {
       if (docSnap.exists()) setSettings(docSnap.data());
     });
 
-    // Escuchar Mensajes no leídos
     const qMessages = query(
       collectionGroup(db, 'messages'), 
       where('sender', '==', 'student'), 
@@ -114,7 +104,6 @@ export default function App() {
       setUnreadMessagesCount(snapshot.docs.length);
     });
 
-    // Escuchar Notificaciones de sistema
     const qNotifs = query(collection(db, 'trainerNotifications'), orderBy('createdAt', 'desc'));
     const unsubNotifs = onSnapshot(qNotifs, (snapshot) => {
       setSystemNotifications(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
@@ -132,46 +121,16 @@ export default function App() {
 
 
   // ==========================================
-  // --- FUNCIONES CRUD GLOBALES BLINDADAS ---
+  // --- FUNCIONES CRUD GLOBALES ---
   // ==========================================
 
-  // --- CLIENTES ---
-  const handleAddClient = async (clientData) => {
-    console.log("🔵 [APP.JSX] Ejecutando handleAddClient para:", clientData);
-    try {
-      const clientsRef = collection(db, 'clients');
-      const newDocRef = doc(clientsRef); // Genera una ID vacía de forma segura antes de guardar
-      await setDoc(newDocRef, {
-        ...clientData,
-        createdAt: new Date(),
-        active: true
-      });
-      console.log("✅ [APP.JSX] Alumno guardado con éxito en Firebase con ID:", newDocRef.id);
-    } catch (error) { 
-      console.error("❌ [APP.JSX] Error crítico agregando cliente: ", error); 
-    }
-  };
-
+  // (Nota: ClientsView ahora gestiona sus propias creaciones/borrados directos, 
+  // pero mantenemos la de Actualizar para ClientDetail y Payments)
   const handleUpdateClient = async (updatedClient) => {
-    console.log("🔵 [APP.JSX] Ejecutando handleUpdateClient para:", updatedClient);
     try {
       const { id, ...data } = updatedClient;
       await updateDoc(doc(db, 'clients', id), data);
-      console.log("✅ [APP.JSX] Alumno actualizado con éxito en Firebase");
-    } catch (error) { 
-      console.error("❌ [APP.JSX] Error actualizando cliente en Firebase: ", error); 
-    }
-  };
-
-  const handleDeleteClient = async (clientId) => {
-    if (!window.confirm('¿Estás seguro de eliminar este atleta? Perderá el acceso y se borrarán sus datos.')) return;
-    try {
-      await deleteDoc(doc(db, 'clients', clientId));
-      if (selectedClient && selectedClient.id === clientId) {
-        setCurrentView('clients');
-        setSelectedClient(null);
-      }
-    } catch (error) { console.error("Error eliminando cliente: ", error); }
+    } catch (error) { console.error("Error actualizando cliente: ", error); }
   };
 
   // --- EJERCICIOS ---
@@ -224,7 +183,6 @@ export default function App() {
     if (clientData) setSelectedClient(clientData);
   };
 
-  // Cálculo total de notificaciones para la campana roja
   const unreadSystemCount = systemNotifications.filter(n => !n.read && !n.deleted).length;
   const totalNotifications = unreadMessagesCount + unreadSystemCount;
 
@@ -238,27 +196,18 @@ export default function App() {
     );
   }
 
-  // 1. FLUJO DE INVITACIÓN
   if (inviteId && userRole !== 'student') {
-    return (
-      <StudentRegistration 
-        inviteId={inviteId} 
-        onRegisterSuccess={() => window.location.href = '/'} 
-      />
-    );
+    return <StudentRegistration inviteId={inviteId} onRegisterSuccess={() => window.location.href = '/'} />;
   }
 
-  // 2. PANTALLA DE LOGIN GENERAL
   if (!user) {
     return <LoginScreen />;
   }
 
-  // 3. VISTA EXCLUSIVA DEL ALUMNO
   if (userRole === 'student' && studentData) {
     return <StudentView clientId={studentData.id} />;
   }
 
-  // 4. VISTA EXCLUSIVA DEL ENTRENADOR
   return (
     <div className="flex h-screen bg-zinc-950 text-white font-sans overflow-hidden">
       
@@ -280,12 +229,12 @@ export default function App() {
         {currentView === 'clients' && (
           <ClientsView 
             clients={clients} 
-            settings={settings} // Pasamos la configuración para leer los planes
-            routines={routines} // Pasamos las rutinas por precaución
+            settings={settings} 
+            routines={routines} 
             navigateTo={navigateTo} 
-            onAddClient={handleAddClient} 
+            // Ya no le pasamos onAddClient ni onDeleteClient porque ahora ClientsView lo hace directo.
+            // Le dejamos onUpdateClient por precaución de compatibilidad.
             onUpdateClient={handleUpdateClient} 
-            onDeleteClient={handleDeleteClient} 
           />
         )}
         
