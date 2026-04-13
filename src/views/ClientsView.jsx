@@ -5,10 +5,10 @@ export default function ClientsView({
   clients = [], 
   settings = null, 
   routines = [], 
-  navigateTo, 
-  onAddClient, 
-  onUpdateClient, 
-  onDeleteClient 
+  navigateTo = () => {}, 
+  onAddClient = async () => { console.error("Error: onAddClient no está conectado"); }, 
+  onUpdateClient = async () => { console.error("Error: onUpdateClient no está conectado"); }, 
+  onDeleteClient = async () => { console.error("Error: onDeleteClient no está conectado"); } 
 }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -25,7 +25,6 @@ export default function ClientsView({
   const safeClients = Array.isArray(clients) ? clients : [];
   
   // SOLUCIÓN AL ERROR #31: Extraemos SOLO el string del nombre del plan.
-  // Si el plan es un objeto {name, price, etc}, sacamos solo el .name
   const safePlans = settings?.plans && Array.isArray(settings.plans) && settings.plans.length > 0 
     ? settings.plans.map(p => typeof p === 'object' ? p.name : p) 
     : ['Plan Base'];
@@ -49,7 +48,7 @@ export default function ClientsView({
   const openEditModal = (client) => {
     setEditingClient(client);
     
-    // Blindaje extra por si el plan del cliente se guardó como objeto por error en el pasado
+    // Blindaje extra por si el plan del cliente se guardó como objeto por error
     const clientPlanName = typeof client.plan === 'object' ? client.plan.name : client.plan;
 
     setFormData({
@@ -61,24 +60,22 @@ export default function ClientsView({
     setIsModalOpen(true);
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!formData.name.trim()) return;
+    
+    const safeName = formData.name || "";
+    if (!safeName.trim()) return;
 
-    if (editingClient) {
-      if (typeof onUpdateClient === 'function') {
-        onUpdateClient({ ...editingClient, ...formData });
+    try {
+      if (editingClient) {
+        await onUpdateClient({ ...editingClient, ...formData });
       } else {
-        console.error("Fallo de conexión: onUpdateClient no llegó desde App.jsx");
+        await onAddClient(formData);
       }
-    } else {
-      if (typeof onAddClient === 'function') {
-        onAddClient(formData);
-      } else {
-        console.error("Fallo de conexión: onAddClient no llegó desde App.jsx");
-      }
+      setIsModalOpen(false);
+    } catch (error) {
+      console.error("Error al procesar el formulario de atleta:", error);
     }
-    setIsModalOpen(false);
   };
 
   const handleCopyLink = (e, clientId) => {
@@ -92,6 +89,7 @@ export default function ClientsView({
   return (
     <div className="max-w-6xl mx-auto animate-in fade-in pb-10">
       
+      {/* HEADER Y BUSCADOR */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
         <div>
           <h2 className="text-3xl font-black text-white uppercase italic tracking-tighter">Mis Atletas</h2>
@@ -120,6 +118,7 @@ export default function ClientsView({
         </div>
       </div>
 
+      {/* LISTADO DE ATLETAS */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {filteredClients.length > 0 ? (
           filteredClients.map(client => (
@@ -194,6 +193,7 @@ export default function ClientsView({
         )}
       </div>
 
+      {/* MODAL CREAR / EDITAR */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 animate-in fade-in">
           <div className="bg-zinc-950 w-full max-w-md rounded-[2rem] border border-zinc-800 shadow-2xl relative overflow-hidden">
