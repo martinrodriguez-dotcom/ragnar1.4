@@ -18,7 +18,6 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary = []
   const [cardioTargetIntensity, setCardioTargetIntensity] = useState('Baja');
   const [isSessionFinalized, setIsSessionFinalized] = useState(false);
   
-  // Para marcar los días con rutina en el calendario
   const [allSessionsIds, setAllSessionsIds] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -27,13 +26,11 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary = []
   const [isExtrasModalOpen, setIsExtrasModalOpen] = useState(false);
   const [editingExerciseIndex, setEditingExerciseIndex] = useState(null);
 
-  // --- FORMULARIO DE EJERCICIO ---
+  // --- FORMULARIO DE EJERCICIO (NUEVA ESTRUCTURA DINÁMICA) ---
   const [exForm, setExForm] = useState({
     name: '',
     videoUrl: '',
-    sets: '',
-    reps: '',
-    rir: '2'
+    plannedSets: [{ reps: '', rir: '2' }] // Nace con 1 serie base
   });
 
   // --- FORMATEO DE FECHAS PARA FIREBASE ---
@@ -41,7 +38,7 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary = []
     const year = d.getFullYear();
     const month = String(d.getMonth() + 1).padStart(2, '0');
     const day = String(d.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`; // Ej: "2026-04-13"
+    return `${year}-${month}-${day}`; 
   };
 
   const currentDateId = formatDateId(date);
@@ -50,12 +47,10 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary = []
   useEffect(() => {
     if (!client) return;
 
-    // 1. Buscamos todas las sesiones para marcar el calendario
     const fetchAllSessions = async () => {
       try {
         const querySnapshot = await getDocs(collection(db, 'clients', client.id, 'sessions'));
         const ids = querySnapshot.docs
-          // Solo marcamos los días que realmente tienen ejercicios asignados
           .filter(doc => doc.data().exercises && doc.data().exercises.length > 0)
           .map(doc => doc.id);
         setAllSessionsIds(ids);
@@ -63,19 +58,16 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary = []
     };
     fetchAllSessions();
 
-    // 2. Escuchamos en vivo la sesión del día seleccionado
     const sessionDocRef = doc(db, 'clients', client.id, 'sessions', currentDateId);
     const unsubDaily = onSnapshot(sessionDocRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
         setDailySession(data.exercises || []);
         setIsSessionFinalized(data.isFinalized || false);
-        // Cargamos los extras si el coach ya los había configurado
         setHydrationTarget(data.targetHydration || '');
         setCardioTargetMinutes(data.targetCardioMinutes || '');
         setCardioTargetIntensity(data.targetCardioIntensity || 'Baja');
       } else {
-        // Día vacío
         setDailySession([]);
         setIsSessionFinalized(false);
         setHydrationTarget('');
@@ -94,17 +86,47 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary = []
     setLoading(true);
   };
 
-  // --- ABRIR MODAL DE EJERCICIO (AGREGAR O EDITAR) ---
+  // --- MANEJO DE SERIES DINÁMICAS (NUEVO) ---
+  const addSet = () => {
+    setExForm({
+      ...exForm,
+      plannedSets: [...exForm.plannedSets, { reps: '', rir: '2' }]
+    });
+  };
+
+  const removeSet = (indexToRemove) => {
+    setExForm({
+      ...exForm,
+      plannedSets: exForm.plannedSets.filter((_, idx) => idx !== indexToRemove)
+    });
+  };
+
+  const updateSetField = (index, field, value) => {
+    const updatedSets = [...exForm.plannedSets];
+    updatedSets[index][field] = value;
+    setExForm({ ...exForm, plannedSets: updatedSets });
+  };
+
+  // --- ABRIR MODAL DE EJERCICIO ---
   const openExerciseModal = (index = null) => {
     if (index !== null) {
       // MODO EDITAR
       const ex = dailySession[index];
+      
+      // Adaptación inteligente por si se edita un ejercicio de formato viejo
+      let loadedSets = ex.plannedSets;
+      if (!loadedSets || loadedSets.length === 0) {
+        const fallbackCount = parseInt(ex.sets || 1);
+        loadedSets = Array.from({ length: fallbackCount }).map(() => ({
+          reps: ex.reps || '',
+          rir: ex.rir || '2'
+        }));
+      }
+
       setExForm({
         name: ex.name || '',
         videoUrl: ex.videoUrl || '',
-        sets: ex.sets || '',
-        reps: ex.reps || '',
-        rir: ex.rir || '2'
+        plannedSets: loadedSets
       });
       setEditingExerciseIndex(index);
     } else {
@@ -112,9 +134,7 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary = []
       setExForm({
         name: exercisesLibrary.length > 0 ? exercisesLibrary[0].name : '',
         videoUrl: exercisesLibrary.length > 0 ? exercisesLibrary[0].videoUrl : '',
-        sets: '',
-        reps: '',
-        rir: '2'
+        plannedSets: [{ reps: '', rir: '2' }]
       });
       setEditingExerciseIndex(null);
     }
@@ -124,26 +144,31 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary = []
   // --- GUARDAR EJERCICIO EN FIREBASE ---
   const handleSaveExercise = async (e) => {
     e.preventDefault();
-    if (!exForm.name || !exForm.sets || !exForm.reps) return;
+    
+    // Verificamos que tenga nombre y que al menos la primera serie tenga reps escritas
+    if (!exForm.name || exForm.plannedSets.length === 0 || !exForm.plannedSets[0].reps) {
+      alert("Por favor completa el nombre y las repeticiones.");
+      return;
+    }
 
     let updatedSession = [...dailySession];
 
     const exerciseToSave = {
       name: String(exForm.name),
       videoUrl: String(exForm.videoUrl || ''),
-      sets: String(exForm.sets),
-      reps: String(exForm.reps),
-      rir: String(exForm.rir),
-      actualSets: [] // Aquí el alumno anotará sus resultados
+      // Mantenemos sets, reps y rir globales por compatibilidad de lectura, pero usando la data de la primera serie
+      sets: String(exForm.plannedSets.length),
+      reps: String(exForm.plannedSets[0].reps), 
+      rir: String(exForm.plannedSets[0].rir),
+      // Nuevo formato exacto serie por serie
+      plannedSets: exForm.plannedSets,
+      actualSets: [] 
     };
 
     if (editingExerciseIndex !== null) {
-      // Si estamos editando, reemplazamos el ejercicio en esa posición
-      // Mantenemos los actualSets si el alumno ya había anotado algo
       exerciseToSave.actualSets = updatedSession[editingExerciseIndex].actualSets || [];
       updatedSession[editingExerciseIndex] = exerciseToSave;
     } else {
-      // Si es nuevo, lo agregamos al final
       updatedSession.push(exerciseToSave);
     }
 
@@ -154,7 +179,6 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary = []
       }, { merge: true });
       
       setIsExerciseModalOpen(false);
-      // Actualizamos los puntos del calendario por si es el primer ejercicio del día
       if (updatedSession.length === 1 && !allSessionsIds.includes(currentDateId)) {
         setAllSessionsIds([...allSessionsIds, currentDateId]);
       }
@@ -175,7 +199,6 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary = []
         exercises: updatedSession
       }, { merge: true });
 
-      // Si borramos todos los ejercicios, quitamos el punto del calendario
       if (updatedSession.length === 0) {
         setAllSessionsIds(allSessionsIds.filter(id => id !== currentDateId));
       }
@@ -200,18 +223,28 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary = []
     }
   };
 
-  // --- COPIAR RUTINA COMPLETA ---
+  // --- COPIAR RUTINA COMPLETA (CONVERSOR INTELIGENTE) ---
   const handleAssignRoutine = async (routineObj) => {
     if (!window.confirm(`¿Copiar la rutina "${routineObj.name}" a este día? Se reemplazarán los ejercicios actuales.`)) return;
     try {
-      const formattedExercises = routineObj.exercises.map(ex => ({
-        name: String(ex.name),
-        videoUrl: String(ex.videoUrl || ''),
-        sets: String(ex.sets || '3'),
-        reps: String(ex.reps || '10'),
-        rir: String(ex.rir || '2'),
-        actualSets: []
-      }));
+      const formattedExercises = routineObj.exercises.map(ex => {
+        // Si la rutina copiada ya tiene formato nuevo, lo respeta. Si no, lo crea desde el global.
+        const defaultSetsNum = parseInt(ex.sets || '3');
+        const plannedSets = ex.plannedSets || Array.from({ length: defaultSetsNum }).map(() => ({
+          reps: String(ex.reps || '10'),
+          rir: String(ex.rir || '2')
+        }));
+
+        return {
+          name: String(ex.name),
+          videoUrl: String(ex.videoUrl || ''),
+          sets: String(plannedSets.length),
+          reps: String(plannedSets[0]?.reps || '10'),
+          rir: String(plannedSets[0]?.rir || '2'),
+          plannedSets: plannedSets,
+          actualSets: []
+        };
+      });
 
       await setDoc(doc(db, 'clients', client.id, 'sessions', currentDateId), {
         date: currentDateId,
@@ -269,7 +302,6 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary = []
             />
           </div>
 
-          {/* ASIGNACIÓN RÁPIDA DE RUTINAS PREDETERMINADAS */}
           <div className="bg-zinc-900 rounded-[2rem] border border-zinc-800 p-6 shadow-xl">
             <h3 className="text-white font-bold uppercase text-sm tracking-widest mb-4 flex items-center gap-2">
               <Save size={16} className="text-yellow-400"/> Pegar Rutina Guardada
@@ -299,7 +331,6 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary = []
         <div className="lg:col-span-8">
           <div className="bg-zinc-900/50 rounded-[2rem] border border-zinc-800 p-6 md:p-8 min-h-[600px] flex flex-col shadow-xl">
             
-            {/* CABECERA DEL DÍA */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8 border-b border-zinc-800 pb-6">
               <div>
                 <h3 className="text-2xl font-black text-white uppercase tracking-tighter flex items-center gap-3">
@@ -311,12 +342,10 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary = []
                 </p>
               </div>
 
-              {/* BOTONES DE ACCIÓN PRINCIPALES */}
               <div className="flex gap-2">
                 <button 
                   onClick={() => setIsExtrasModalOpen(true)}
                   className="bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 text-blue-400 px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 transition-all"
-                  title="Configurar Agua y Cardio"
                 >
                   <Droplets size={16}/> Extras
                 </button>
@@ -329,7 +358,6 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary = []
               </div>
             </div>
 
-            {/* AVISO DE SESIÓN FINALIZADA */}
             {isSessionFinalized && (
               <div className="mb-6 bg-green-500/10 border border-green-500/20 p-4 rounded-2xl flex items-center gap-3">
                 <div className="p-2 bg-green-500 rounded-full text-black"><CheckCircle size={20}/></div>
@@ -340,14 +368,13 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary = []
               </div>
             )}
 
-            {/* MOSTRADOR DE EXTRAS (AGUA Y CARDIO) */}
             {(hydrationTarget || cardioTargetMinutes) && (
-              <div className="flex gap-3 mb-6">
+              <div className="flex flex-col sm:flex-row gap-3 mb-6">
                 {hydrationTarget && (
                   <div className="flex-1 bg-black/40 border border-blue-500/20 rounded-2xl p-4 flex items-center gap-4">
                     <div className="p-3 bg-blue-500/10 rounded-xl text-blue-400"><Droplets size={24}/></div>
                     <div>
-                      <p className="text-[10px] text-blue-400/60 font-black uppercase tracking-widest">Objetivo Hidratación</p>
+                      <p className="text-[10px] text-blue-400/60 font-black uppercase tracking-widest">Meta Agua</p>
                       <p className="text-xl font-black text-white">{hydrationTarget} Litros</p>
                     </div>
                   </div>
@@ -372,21 +399,35 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary = []
                 dailySession.map((ex, idx) => (
                   <div key={idx} className="bg-black/60 border border-zinc-800 rounded-2xl p-5 hover:border-zinc-700 transition-colors group">
                     <div className="flex justify-between items-start">
-                      <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 bg-yellow-400/10 text-yellow-400 rounded-xl flex items-center justify-center font-black text-lg border border-yellow-400/20">
+                      <div className="flex gap-4 w-full">
+                        <div className="w-10 h-10 bg-yellow-400/10 text-yellow-400 rounded-xl flex items-center justify-center font-black text-lg border border-yellow-400/20 shrink-0">
                           {idx + 1}
                         </div>
-                        <div>
-                          <h4 className="text-white font-black text-lg uppercase tracking-tighter leading-none mb-1">{ex.name}</h4>
-                          <div className="flex gap-3 text-[10px] font-black text-zinc-500 uppercase tracking-widest">
-                            <span className="bg-zinc-900 px-2 py-1 rounded-md border border-zinc-800">{ex.sets} Series</span>
-                            <span className="bg-zinc-900 px-2 py-1 rounded-md border border-zinc-800">{ex.reps} Reps</span>
-                            {ex.rir && <span className="bg-yellow-400/10 text-yellow-400 px-2 py-1 rounded-md border border-yellow-400/20">RIR {ex.rir}</span>}
+                        <div className="flex-1">
+                          <h4 className="text-white font-black text-lg uppercase tracking-tighter leading-none mb-3">{ex.name}</h4>
+                          
+                          {/* DESGLOSE SERIE POR SERIE */}
+                          <div className="space-y-1.5">
+                            {ex.plannedSets ? (
+                              ex.plannedSets.map((set, sIdx) => (
+                                <div key={sIdx} className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest">
+                                  <span className="text-zinc-500 w-12 shrink-0">Set {sIdx + 1}</span>
+                                  <span className="text-white bg-zinc-800 px-2 py-1 rounded border border-zinc-700">{set.reps} Reps</span>
+                                  <span className="text-yellow-400 bg-yellow-400/10 px-2 py-1 rounded border border-yellow-400/20">RIR {set.rir}</span>
+                                </div>
+                              ))
+                            ) : (
+                              /* Modo Legado (si no tenía plannedSets) */
+                              <div className="flex gap-2 text-[10px] font-black uppercase tracking-widest">
+                                <span className="text-white bg-zinc-800 px-2 py-1 rounded border border-zinc-700">{ex.sets} Series</span>
+                                <span className="text-white bg-zinc-800 px-2 py-1 rounded border border-zinc-700">{ex.reps} Reps</span>
+                                {ex.rir && <span className="text-yellow-400 bg-yellow-400/10 px-2 py-1 rounded border border-yellow-400/20">RIR {ex.rir}</span>}
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>
                       
-                      {/* BOTONES DE EDICIÓN Y BORRADO */}
                       <div className="flex items-center gap-2 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
                         <button 
                           onClick={() => openExerciseModal(idx)}
@@ -419,12 +460,12 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary = []
         </div>
       </div>
 
-      {/* --- MODAL 1: AGREGAR / EDITAR EJERCICIO --- */}
+      {/* --- MODAL 1: AGREGAR / EDITAR EJERCICIO CON SERIES DINÁMICAS --- */}
       {isExerciseModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 animate-in fade-in">
-          <div className="bg-zinc-950 w-full max-w-md rounded-[2rem] border border-zinc-800 shadow-2xl relative overflow-hidden">
+          <div className="bg-zinc-950 w-full max-w-md rounded-[2rem] border border-zinc-800 shadow-2xl relative overflow-hidden flex flex-col max-h-[90vh]">
             
-            <div className="flex justify-between items-center p-6 border-b border-zinc-800 bg-zinc-900/50">
+            <div className="flex justify-between items-center p-6 border-b border-zinc-800 bg-zinc-900/50 shrink-0">
               <h2 className="text-xl font-black text-white uppercase italic tracking-tighter flex items-center gap-2">
                 {editingExerciseIndex !== null ? 'Editar Ejercicio' : 'Configurar Ejercicio'}
               </h2>
@@ -433,7 +474,8 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary = []
               </button>
             </div>
             
-            <form onSubmit={handleSaveExercise} className="p-6 space-y-5">
+            <div className="p-6 overflow-y-auto custom-scrollbar flex-1 space-y-6">
+              
               <div>
                 <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2">Seleccionar de Biblioteca</label>
                 <select 
@@ -452,56 +494,69 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary = []
                 </select>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2">Nº de Series</label>
-                  <input 
-                    type="number" 
-                    required min="1" max="10"
-                    placeholder="Ej: 3"
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white outline-none focus:border-yellow-400 transition-colors font-bold text-center" 
-                    value={exForm.sets} 
-                    onChange={e => setExForm({...exForm, sets: e.target.value})} 
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2">Repeticiones</label>
-                  <input 
-                    type="text" 
-                    required 
-                    placeholder="Ej: 10-12 o Fallo"
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white outline-none focus:border-yellow-400 transition-colors font-bold text-center" 
-                    value={exForm.reps} 
-                    onChange={e => setExForm({...exForm, reps: e.target.value})} 
-                  />
-                </div>
-              </div>
-
               <div>
-                <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2">RIR (Repeticiones en Reserva)</label>
-                <div className="flex gap-2">
-                  {[0, 1, 2, 3, 4].map(val => (
-                    <button
-                      key={val}
-                      type="button"
-                      onClick={() => setExForm({...exForm, rir: String(val)})}
-                      className={`flex-1 py-3 rounded-xl font-black text-sm transition-all border ${exForm.rir === String(val) ? 'bg-yellow-400 text-black border-yellow-400 shadow-[0_0_15px_rgba(250,204,21,0.3)]' : 'bg-zinc-900 text-zinc-500 border-zinc-800 hover:text-white'}`}
-                    >
-                      {val}
-                    </button>
+                <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-3">Series del Ejercicio</label>
+                
+                <div className="space-y-3">
+                  {exForm.plannedSets.map((set, idx) => (
+                    <div key={idx} className="flex items-center gap-2 bg-black/40 p-2 rounded-xl border border-zinc-800 animate-in slide-in-from-bottom-2">
+                      
+                      <div className="w-8 h-8 flex items-center justify-center bg-zinc-900 rounded-lg text-[10px] font-black text-zinc-500 shrink-0">
+                        {idx + 1}
+                      </div>
+                      
+                      <input
+                        type="text"
+                        placeholder="Reps (ej. 10)"
+                        required
+                        className="w-24 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2.5 text-white outline-none focus:border-yellow-400 text-xs font-bold text-center"
+                        value={set.reps}
+                        onChange={e => updateSetField(idx, 'reps', e.target.value)}
+                      />
+                      
+                      <select
+                        className="flex-1 bg-zinc-900 border border-zinc-700 rounded-lg px-2 py-2.5 text-white outline-none focus:border-yellow-400 text-xs font-bold"
+                        value={set.rir}
+                        onChange={e => updateSetField(idx, 'rir', e.target.value)}
+                      >
+                        <option value="0">RIR 0 (Fallo)</option>
+                        <option value="1">RIR 1</option>
+                        <option value="2">RIR 2</option>
+                        <option value="3">RIR 3</option>
+                        <option value="4">RIR 4</option>
+                      </select>
+
+                      <button 
+                        type="button" 
+                        disabled={exForm.plannedSets.length === 1}
+                        onClick={() => removeSet(idx)} 
+                        className="p-2 text-zinc-600 hover:text-red-500 hover:bg-zinc-800 rounded-lg transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-zinc-600 shrink-0"
+                        title={exForm.plannedSets.length === 1 ? "No puedes eliminar la única serie" : "Eliminar serie"}
+                      >
+                        <Trash2 size={18}/>
+                      </button>
+                    </div>
                   ))}
                 </div>
-              </div>
 
-              <div className="pt-4 border-t border-zinc-800 flex gap-3">
-                <button type="button" onClick={() => setIsExerciseModalOpen(false)} className="flex-1 py-4 text-zinc-400 font-bold uppercase text-xs rounded-xl bg-black border border-zinc-800 hover:bg-zinc-900 transition-colors">
-                  Cancelar
-                </button>
-                <button type="submit" className="flex-1 bg-yellow-400 hover:bg-yellow-300 text-black font-black py-4 rounded-xl uppercase text-xs tracking-widest transition-colors shadow-lg shadow-yellow-400/20">
-                  {editingExerciseIndex !== null ? 'Guardar Cambios' : 'Agregar a la Rutina'}
+                <button 
+                  type="button" 
+                  onClick={addSet} 
+                  className="w-full mt-3 py-3 border border-dashed border-zinc-700 text-zinc-400 hover:text-yellow-400 hover:border-yellow-400 hover:bg-yellow-400/5 rounded-xl text-[10px] font-black uppercase tracking-widest flex justify-center items-center gap-2 transition-all"
+                >
+                  <Plus size={16}/> Agregar Serie
                 </button>
               </div>
-            </form>
+            </div>
+
+            <div className="p-6 border-t border-zinc-800 bg-zinc-950 flex gap-3 shrink-0">
+              <button type="button" onClick={() => setIsExerciseModalOpen(false)} className="flex-1 py-4 text-zinc-400 font-bold uppercase text-xs rounded-xl bg-black border border-zinc-800 hover:bg-zinc-900 transition-colors">
+                Cancelar
+              </button>
+              <button onClick={handleSaveExercise} type="button" className="flex-1 bg-yellow-400 hover:bg-yellow-300 text-black font-black py-4 rounded-xl uppercase text-xs tracking-widest transition-colors shadow-lg shadow-yellow-400/20">
+                {editingExerciseIndex !== null ? 'Guardar Cambios' : 'Agregar a Rutina'}
+              </button>
+            </div>
 
           </div>
         </div>
@@ -525,7 +580,6 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary = []
             
             <form onSubmit={handleSaveExtras} className="p-6 space-y-6">
               
-              {/* INPUT HIDRATACIÓN */}
               <div className="bg-blue-500/5 border border-blue-500/20 p-4 rounded-2xl">
                 <label className="flex items-center gap-2 text-[10px] font-black text-blue-400 uppercase tracking-widest mb-3">
                   <Droplets size={14}/> Meta de Hidratación
@@ -543,7 +597,6 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary = []
                 </div>
               </div>
 
-              {/* INPUT CARDIO */}
               <div className="bg-red-500/5 border border-red-500/20 p-4 rounded-2xl">
                 <label className="flex items-center gap-2 text-[10px] font-black text-red-400 uppercase tracking-widest mb-3">
                   <Activity size={14}/> Meta de Cardio
