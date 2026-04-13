@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Search, Plus, User, Trash2, Edit, Dumbbell, Calendar, Check, ChevronRight, Link, X } from 'lucide-react';
 
 export default function ClientsView({ 
@@ -6,10 +6,15 @@ export default function ClientsView({
   settings = null, 
   routines = [], 
   navigateTo = () => {}, 
-  onAddClient = async () => { console.error("Error: onAddClient no está conectado"); }, 
-  onUpdateClient = async () => { console.error("Error: onUpdateClient no está conectado"); }, 
-  onDeleteClient = async () => { console.error("Error: onDeleteClient no está conectado"); } 
+  onAddClient, 
+  onUpdateClient, 
+  onDeleteClient 
 }) {
+  // --- RASTREADOR DE VERSIÓN ---
+  useEffect(() => {
+    console.log("🚀 [CLIENTS_VIEW] VERSIÓN 3 CARGADA - El archivo se actualizó correctamente.");
+  }, []);
+
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingClient, setEditingClient] = useState(null);
@@ -24,7 +29,6 @@ export default function ClientsView({
 
   const safeClients = Array.isArray(clients) ? clients : [];
   
-  // SOLUCIÓN AL ERROR #31: Extraemos SOLO el string del nombre del plan.
   const safePlans = settings?.plans && Array.isArray(settings.plans) && settings.plans.length > 0 
     ? settings.plans.map(p => typeof p === 'object' ? p.name : p) 
     : ['Plan Base'];
@@ -47,8 +51,6 @@ export default function ClientsView({
 
   const openEditModal = (client) => {
     setEditingClient(client);
-    
-    // Blindaje extra por si el plan del cliente se guardó como objeto por error
     const clientPlanName = typeof client.plan === 'object' ? client.plan.name : client.plan;
 
     setFormData({
@@ -62,19 +64,35 @@ export default function ClientsView({
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    console.log("🟢 [CLIENTS_VIEW] Botón Guardar presionado. Datos:", formData);
     
     const safeName = formData.name || "";
-    if (!safeName.trim()) return;
+    if (!safeName.trim()) {
+      console.warn("🟡 [CLIENTS_VIEW] Nombre vacío, cancelando.");
+      return;
+    }
 
     try {
       if (editingClient) {
-        await onUpdateClient({ ...editingClient, ...formData });
+        console.log("🔵 [CLIENTS_VIEW] Intentando EDITAR alumno...");
+        if (typeof onUpdateClient === 'function') {
+          await onUpdateClient({ ...editingClient, ...formData });
+          console.log("✅ [CLIENTS_VIEW] Edición enviada con éxito a App.jsx");
+        } else {
+          console.error("❌ [CLIENTS_VIEW ERROR] La función onUpdateClient NO llegó desde App.jsx");
+        }
       } else {
-        await onAddClient(formData);
+        console.log("🔵 [CLIENTS_VIEW] Intentando CREAR alumno...");
+        if (typeof onAddClient === 'function') {
+          await onAddClient(formData);
+          console.log("✅ [CLIENTS_VIEW] Creación enviada con éxito a App.jsx");
+        } else {
+          console.error("❌ [CLIENTS_VIEW ERROR] La función onAddClient NO llegó desde App.jsx");
+        }
       }
       setIsModalOpen(false);
     } catch (error) {
-      console.error("Error al procesar el formulario de atleta:", error);
+      console.error("❌ [CLIENTS_VIEW CATCH ERROR] Falló al enviar datos:", error);
     }
   };
 
