@@ -3,7 +3,7 @@ import Calendar from 'react-calendar';
 import 'react-calendar/dist/Calendar.css';
 import { 
   ChevronLeft, Calendar as CalendarIcon, Dumbbell, Plus, 
-  Trash2, Edit, Save, Activity, Droplets, Target, User, Video, X 
+  Trash2, Edit, Save, Activity, Droplets, Target, User, Video, X, CheckCircle 
 } from 'lucide-react';
 import { collection, doc, onSnapshot, setDoc, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -111,7 +111,7 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary = []
   // --- ABRIR MODAL DE EJERCICIO ---
   const openExerciseModal = (index = null) => {
     if (index !== null) {
-      // MODO EDITAR: Adaptación ultra-segura para evitar crasheos con datos viejos
+      // MODO EDITAR
       const ex = dailySession[index];
       let loadedSets = ex.plannedSets;
       
@@ -397,7 +397,6 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary = []
                 <div className="flex justify-center py-10"><div className="animate-spin rounded-full h-8 w-8 border-t-2 border-yellow-400"></div></div>
               ) : dailySession.length > 0 ? (
                 dailySession.map((ex, idx) => {
-                  // Reconstrucción ultra-segura para el renderizado (Evita crasheo por datos NaN/Undefined)
                   const safeSets = ex.plannedSets || Array.from({ length: Math.max(1, parseInt(ex.sets) || 1) }).map(() => ({
                     reps: String(ex.reps || ''),
                     rir: String(ex.rir || '')
@@ -413,7 +412,6 @@ export default function ClientDetailView({ client, goBack, exercisesLibrary = []
                           <div className="flex-1">
                             <h4 className="text-white font-black text-lg uppercase tracking-tighter leading-none mb-3">{ex.name}</h4>
                             
-                            {/* DESGLOSE SERIE POR SERIE SEGURO */}
                             <div className="space-y-1.5">
                               {safeSets.map((set, sIdx) => (
                                 <div key={sIdx} className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest">
