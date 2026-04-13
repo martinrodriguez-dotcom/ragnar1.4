@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Bell, MessageSquare, Trophy, AlertCircle, Check, 
-  Trash2, Dumbbell, Clock, Zap, CreditCard, CheckCircle2 
+  Trash2, Dumbbell, Clock, Zap, CreditCard, CheckCircle2, User 
 } from 'lucide-react';
 import { 
   collection, query, orderBy, onSnapshot, doc, 
@@ -16,18 +16,23 @@ export default function NotificationsView() {
 
   // --- ESCUCHA DE NOTIFICACIONES EN TIEMPO REAL ---
   useEffect(() => {
-    // 1. Escuchamos las notificaciones del sistema (Hitos, Pagos, Entrenamientos)
+    // 1. Escuchamos las notificaciones del sistema
     const qSys = query(collection(db, 'trainerNotifications'), orderBy('createdAt', 'desc'));
     
     const unsubSys = onSnapshot(qSys, (sysSnap) => {
-      const sysData = sysSnap.docs.map(d => ({ 
-        id: d.id, 
-        _source: 'system', 
-        ref: d.ref, // Guardamos la referencia para poder actualizarla
-        ...d.data() 
-      }));
+      const sysData = sysSnap.docs.map(d => {
+        const data = d.data();
+        return {
+          id: d.id, 
+          _source: 'system', 
+          ref: d.ref, 
+          // Intentamos atrapar el nombre del cliente desde distintas posibles variables
+          clientName: data.clientName || data.studentName || data.playerName || data.userName || null,
+          ...data 
+        };
+      });
       
-      // 2. Escuchamos los mensajes no leídos de los alumnos en toda la base de datos
+      // 2. Escuchamos los mensajes no leídos de los alumnos
       const qMsg = query(
         collectionGroup(db, 'messages'), 
         where('sender', '==', 'student'), 
@@ -35,16 +40,21 @@ export default function NotificationsView() {
       );
       
       const unsubMsg = onSnapshot(qMsg, (msgSnap) => {
-        const msgData = msgSnap.docs.map(d => ({
-          id: d.id,
-          _source: 'message',
-          ref: d.ref,
-          type: 'message',
-          title: 'Nuevo Mensaje de Alumno',
-          body: d.data().text || 'Te ha enviado un mensaje.',
-          createdAt: d.data().createdAt,
-          read: false
-        }));
+        const msgData = msgSnap.docs.map(d => {
+          const data = d.data();
+          return {
+            id: d.id,
+            _source: 'message',
+            ref: d.ref,
+            type: 'message',
+            title: 'Nuevo Mensaje Directo',
+            body: data.text || 'Te ha enviado un mensaje.',
+            // Si el mensaje tiene el nombre del remitente, lo guardamos
+            clientName: data.senderName || data.studentName || 'Un Alumno',
+            createdAt: data.createdAt,
+            read: false
+          };
+        });
 
         // Combinamos ambas fuentes y ordenamos por fecha (más reciente primero)
         const combined = [...sysData, ...msgData].sort((a, b) => {
@@ -99,21 +109,24 @@ export default function NotificationsView() {
     }
   };
 
-  // --- GENERADOR DE PRUEBAS (SOLO PARA QUE VEAS CÓMO QUEDA) ---
+  // --- GENERADOR DE PRUEBAS ---
   const generateTestNotification = async () => {
     const types = ['milestone', 'payment', 'workout', 'system', 'message_mock'];
     const randomType = types[Math.floor(Math.random() * types.length)];
     
-    let title = ''; let body = '';
+    const mockNames = ['Juan Pérez', 'María Gómez', 'Carlos López', 'Ana Silva', 'Marcos Ruiz'];
+    const randomName = mockNames[Math.floor(Math.random() * mockNames.length)];
+    
+    let title = ''; let body = ''; let assignName = randomName;
     
     switch(randomType) {
       case 'milestone': 
         title = '¡Nuevo Récord Personal!'; 
-        body = 'Un alumno acaba de levantar 120kg en Sentadilla Libre. ¡Felicítalo!'; 
+        body = 'Acaba de levantar 120kg en Sentadilla Libre. ¡Déjale un comentario!'; 
         break;
       case 'payment': 
         title = 'Aviso de Cobro Próximo'; 
-        body = 'La suscripción del Plan Premium de un atleta vence en 2 días.'; 
+        body = 'La suscripción del Plan Premium vence en 2 días.'; 
         break;
       case 'workout': 
         title = 'Entrenamiento Finalizado'; 
@@ -126,15 +139,16 @@ export default function NotificationsView() {
       default: 
         title = 'Actualización del Sistema'; 
         body = 'Tu base de datos Firebase está sincronizada y funcionando al 100%.';
+        assignName = null; // Las alertas del sistema no suelen tener un alumno específico
     }
 
-    // Usamos el tipo real en DB
     const dbType = randomType === 'message_mock' ? 'message' : randomType;
 
     await addDoc(collection(db, 'trainerNotifications'), {
       type: dbType,
       title,
       body,
+      clientName: assignName, // AHORA SÍ GUARDAMOS EL NOMBRE
       read: false,
       createdAt: new Date()
     });
@@ -146,12 +160,12 @@ export default function NotificationsView() {
     if (filter === 'messages') return n.type === 'message';
     if (filter === 'milestones') return n.type === 'milestone';
     if (filter === 'payments') return n.type === 'payment';
-    return true; // 'all'
+    return true; 
   });
 
   const unreadTotal = notifications.filter(n => !n.read).length;
 
-  // --- RENDERIZADO DE ICONOS SEGÚN EL TIPO ---
+  // --- RENDERIZADO DE ICONOS Y COLORES ---
   const getIcon = (type) => {
     switch (type) {
       case 'message': return <MessageSquare size={20} className="text-blue-400" />;
@@ -163,7 +177,7 @@ export default function NotificationsView() {
   };
 
   const getBgColor = (type, isRead) => {
-    if (isRead) return 'bg-zinc-900 border-zinc-800 opacity-70'; // Leído
+    if (isRead) return 'bg-zinc-900 border-zinc-800 opacity-70'; 
     switch (type) {
       case 'message': return 'bg-blue-500/10 border-blue-500/30';
       case 'milestone': return 'bg-yellow-400/10 border-yellow-400/30';
@@ -205,7 +219,6 @@ export default function NotificationsView() {
         </div>
         
         <div className="flex gap-2">
-          {/* Botón de Prueba (Lo puedes quitar cuando tu app esté en producción) */}
           <button 
             onClick={generateTestNotification}
             className="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-4 py-2 rounded-xl text-xs font-bold transition-colors border border-zinc-700"
@@ -242,18 +255,30 @@ export default function NotificationsView() {
               key={notif.id} 
               className={`p-4 md:p-5 rounded-2xl border flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all group ${getBgColor(notif.type, notif.read)}`}
             >
-              <div className="flex items-start gap-4">
+              <div className="flex items-start gap-4 w-full">
                 <div className="p-3 bg-zinc-950 rounded-xl border border-zinc-800 shadow-inner mt-1 md:mt-0 shrink-0">
                   {getIcon(notif.type)}
                 </div>
-                <div>
+                <div className="flex-1">
                   <h3 className={`font-bold text-sm md:text-base mb-1 ${notif.read ? 'text-zinc-400' : 'text-white'}`}>
                     {notif.title}
                   </h3>
+                  
+                  {/* AQUÍ ESTÁ LA MAGIA: MOSTRAR EL NOMBRE DEL ALUMNO */}
+                  {notif.clientName && (
+                    <div className="flex items-center gap-1 mb-2">
+                      <User size={12} className="text-yellow-400" />
+                      <span className="text-[11px] font-black uppercase tracking-widest text-yellow-400">
+                        Atleta: {notif.clientName}
+                      </span>
+                    </div>
+                  )}
+
                   <p className={`text-xs md:text-sm leading-relaxed max-w-2xl ${notif.read ? 'text-zinc-600' : 'text-zinc-300'}`}>
                     {notif.body}
                   </p>
-                  <div className="flex items-center gap-1 mt-2 text-[10px] uppercase font-bold tracking-widest text-zinc-500">
+                  
+                  <div className="flex items-center gap-1 mt-3 text-[10px] uppercase font-bold tracking-widest text-zinc-500">
                     <Clock size={12} /> {formatTime(notif.createdAt)}
                   </div>
                 </div>
