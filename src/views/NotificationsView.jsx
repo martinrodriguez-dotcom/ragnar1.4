@@ -12,11 +12,10 @@ import { db } from '../firebase';
 export default function NotificationsView() {
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState('all'); // all, unread, messages, milestones, payments
+  const [filter, setFilter] = useState('all'); 
 
   // --- ESCUCHA DE NOTIFICACIONES EN TIEMPO REAL ---
   useEffect(() => {
-    // 1. Escuchamos las notificaciones del sistema
     const qSys = query(collection(db, 'trainerNotifications'), orderBy('createdAt', 'desc'));
     
     const unsubSys = onSnapshot(qSys, (sysSnap) => {
@@ -26,13 +25,11 @@ export default function NotificationsView() {
           id: d.id, 
           _source: 'system', 
           ref: d.ref, 
-          // Intentamos atrapar el nombre del cliente desde distintas posibles variables
           clientName: data.clientName || data.studentName || data.playerName || data.userName || null,
           ...data 
         };
       });
       
-      // 2. Escuchamos los mensajes no leídos de los alumnos
       const qMsg = query(
         collectionGroup(db, 'messages'), 
         where('sender', '==', 'student'), 
@@ -49,14 +46,12 @@ export default function NotificationsView() {
             type: 'message',
             title: 'Nuevo Mensaje Directo',
             body: data.text || 'Te ha enviado un mensaje.',
-            // Si el mensaje tiene el nombre del remitente, lo guardamos
             clientName: data.senderName || data.studentName || 'Un Alumno',
             createdAt: data.createdAt,
             read: false
           };
         });
 
-        // Combinamos ambas fuentes y ordenamos por fecha (más reciente primero)
         const combined = [...sysData, ...msgData].sort((a, b) => {
           const dateA = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : new Date(a.createdAt || 0).getTime();
           const dateB = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : new Date(b.createdAt || 0).getTime();
@@ -76,9 +71,7 @@ export default function NotificationsView() {
   // --- FUNCIONES DE ACCIÓN ---
   const markAsRead = async (notif) => {
     try {
-      if (notif.ref) {
-        await updateDoc(notif.ref, { read: true });
-      }
+      if (notif.ref) await updateDoc(notif.ref, { read: true });
     } catch (error) {
       console.error("Error al marcar como leído:", error);
     }
@@ -96,12 +89,11 @@ export default function NotificationsView() {
   };
 
   const deleteNotification = async (notif) => {
-    if (!window.confirm('¿Eliminar esta notificación?')) return;
+    if (!window.confirm('¿Eliminar esta notificación del historial?')) return;
     try {
       if (notif._source === 'system' && notif.ref) {
         await deleteDoc(notif.ref);
       } else if (notif._source === 'message') {
-        // En los mensajes, solo lo marcamos como leído para no borrarle el chat al alumno
         await updateDoc(notif.ref, { read: true });
       }
     } catch (error) {
@@ -113,7 +105,6 @@ export default function NotificationsView() {
   const generateTestNotification = async () => {
     const types = ['milestone', 'payment', 'workout', 'system', 'message_mock'];
     const randomType = types[Math.floor(Math.random() * types.length)];
-    
     const mockNames = ['Juan Pérez', 'María Gómez', 'Carlos López', 'Ana Silva', 'Marcos Ruiz'];
     const randomName = mockNames[Math.floor(Math.random() * mockNames.length)];
     
@@ -122,24 +113,24 @@ export default function NotificationsView() {
     switch(randomType) {
       case 'milestone': 
         title = '¡Nuevo Récord Personal!'; 
-        body = 'Acaba de levantar 120kg en Sentadilla Libre. ¡Déjale un comentario!'; 
+        body = 'Acaba de levantar 120kg en Sentadilla Libre. ¡Tremendo progreso!'; 
         break;
       case 'payment': 
-        title = 'Aviso de Cobro Próximo'; 
-        body = 'La suscripción del Plan Premium vence en 2 días.'; 
+        title = 'Aviso de Cobro'; 
+        body = 'La suscripción del Plan Premium vence en exactamente 2 días.'; 
         break;
       case 'workout': 
         title = 'Entrenamiento Finalizado'; 
-        body = 'Se ha completado la rutina "Fuerza Día 1" con un 90% de cumplimiento.'; 
+        body = 'Completó la rutina "Día 1: Hipertrofia" con un 100% de cumplimiento. Está on fire.'; 
         break;
       case 'message_mock': 
-        title = 'Nuevo Mensaje'; 
-        body = 'Hola coach, me duele un poco el hombro en el press, ¿qué hago?'; 
+        title = 'Consulta del Atleta'; 
+        body = 'Hola coach, me duele un poco el hombro en el press militar, ¿puedo cambiarlo por mancuernas?'; 
         break;
       default: 
-        title = 'Actualización del Sistema'; 
-        body = 'Tu base de datos Firebase está sincronizada y funcionando al 100%.';
-        assignName = null; // Las alertas del sistema no suelen tener un alumno específico
+        title = 'Sincronización Exitosa'; 
+        body = 'La plataforma Ragnar Training está funcionando a máxima capacidad.';
+        assignName = null; 
     }
 
     const dbType = randomType === 'message_mock' ? 'message' : randomType;
@@ -148,7 +139,7 @@ export default function NotificationsView() {
       type: dbType,
       title,
       body,
-      clientName: assignName, // AHORA SÍ GUARDAMOS EL NOMBRE
+      clientName: assignName,
       read: false,
       createdAt: new Date()
     });
@@ -165,25 +156,53 @@ export default function NotificationsView() {
 
   const unreadTotal = notifications.filter(n => !n.read).length;
 
-  // --- RENDERIZADO DE ICONOS Y COLORES ---
-  const getIcon = (type) => {
-    switch (type) {
-      case 'message': return <MessageSquare size={20} className="text-blue-400" />;
-      case 'milestone': return <Trophy size={20} className="text-yellow-400" />;
-      case 'payment': return <CreditCard size={20} className="text-red-400" />;
-      case 'workout': return <Dumbbell size={20} className="text-green-400" />;
-      default: return <Zap size={20} className="text-zinc-400" />;
+  // --- ESTILOS PREMIUM POR TIPO ---
+  const getTypeStyles = (type, isRead) => {
+    if (isRead) {
+      return {
+        cardBg: 'bg-zinc-950/50 border-zinc-900 opacity-60 hover:opacity-100',
+        accentLine: 'bg-zinc-800',
+        iconWrap: 'bg-zinc-900 border-zinc-800 text-zinc-600',
+        icon: <CheckCircle2 size={18} />
+      };
     }
-  };
 
-  const getBgColor = (type, isRead) => {
-    if (isRead) return 'bg-zinc-900 border-zinc-800 opacity-70'; 
     switch (type) {
-      case 'message': return 'bg-blue-500/10 border-blue-500/30';
-      case 'milestone': return 'bg-yellow-400/10 border-yellow-400/30';
-      case 'payment': return 'bg-red-500/10 border-red-500/30';
-      case 'workout': return 'bg-green-500/10 border-green-500/30';
-      default: return 'bg-zinc-800 border-zinc-700';
+      case 'message': 
+        return {
+          cardBg: 'bg-zinc-900 border-zinc-800 hover:border-blue-500/30 hover:shadow-[0_0_30px_rgba(59,130,246,0.1)]',
+          accentLine: 'bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.5)]',
+          iconWrap: 'bg-blue-500/10 border-blue-500/20 text-blue-400',
+          icon: <MessageSquare size={18} />
+        };
+      case 'milestone': 
+        return {
+          cardBg: 'bg-zinc-900 border-zinc-800 hover:border-yellow-400/30 hover:shadow-[0_0_30px_rgba(250,204,21,0.05)]',
+          accentLine: 'bg-yellow-400 shadow-[0_0_10px_rgba(250,204,21,0.5)]',
+          iconWrap: 'bg-yellow-400/10 border-yellow-400/20 text-yellow-400',
+          icon: <Trophy size={18} />
+        };
+      case 'payment': 
+        return {
+          cardBg: 'bg-zinc-900 border-zinc-800 hover:border-red-500/30 hover:shadow-[0_0_30px_rgba(239,68,68,0.1)]',
+          accentLine: 'bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]',
+          iconWrap: 'bg-red-500/10 border-red-500/20 text-red-500',
+          icon: <CreditCard size={18} />
+        };
+      case 'workout': 
+        return {
+          cardBg: 'bg-zinc-900 border-zinc-800 hover:border-green-500/30 hover:shadow-[0_0_30px_rgba(34,197,94,0.1)]',
+          accentLine: 'bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.5)]',
+          iconWrap: 'bg-green-500/10 border-green-500/20 text-green-500',
+          icon: <Dumbbell size={18} />
+        };
+      default: 
+        return {
+          cardBg: 'bg-zinc-900 border-zinc-800 hover:border-zinc-700',
+          accentLine: 'bg-zinc-500',
+          iconWrap: 'bg-zinc-800 border-zinc-700 text-zinc-400',
+          icon: <Zap size={18} />
+        };
     }
   };
 
@@ -202,115 +221,146 @@ export default function NotificationsView() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto animate-in fade-in pb-10">
+    <div className="max-w-5xl mx-auto animate-in fade-in pb-12">
       
-      {/* HEADER */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
+      {/* HEADER PREMIUM */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-10">
         <div>
-          <h2 className="text-3xl font-black text-white uppercase italic tracking-tighter flex items-center gap-3">
-            Centro de Mando
-            {unreadTotal > 0 && (
-              <span className="bg-red-500 text-white text-sm px-3 py-1 rounded-full not-italic">
-                {unreadTotal} nuevas
-              </span>
-            )}
-          </h2>
-          <p className="text-zinc-500 text-sm font-medium">Revisa la actividad de tus atletas y alertas del sistema.</p>
+          <div className="flex items-center gap-3 mb-2">
+            <div className="p-3 bg-yellow-400/10 rounded-2xl border border-yellow-400/20">
+              <Bell size={24} className="text-yellow-400" />
+            </div>
+            <h2 className="text-4xl font-black text-white uppercase italic tracking-tighter">
+              Radar de Mando
+            </h2>
+          </div>
+          <p className="text-zinc-500 text-sm font-medium pl-1">
+            Supervisa la actividad de tus atletas en tiempo real.
+          </p>
         </div>
         
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-3 w-full md:w-auto">
           <button 
             onClick={generateTestNotification}
-            className="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-4 py-2 rounded-xl text-xs font-bold transition-colors border border-zinc-700"
-            title="Genera una alerta aleatoria para probar el diseño"
+            className="flex-1 md:flex-none bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white px-5 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all border border-zinc-800 shadow-lg"
           >
-            + Crear Prueba
+            + Forzar Alerta
           </button>
           
           {unreadTotal > 0 && (
             <button 
               onClick={markAllAsRead}
-              className="bg-zinc-900 hover:bg-zinc-800 text-white border border-zinc-700 px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-colors"
+              className="flex-1 md:flex-none bg-green-500/10 hover:bg-green-500/20 text-green-500 border border-green-500/30 px-5 py-3 rounded-xl text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all shadow-lg"
             >
-              <CheckCircle2 size={16} className="text-green-400"/> Marcar todas leídas
+              <CheckCircle2 size={16}/> Limpiar Nuevas
             </button>
           )}
         </div>
       </div>
 
-      {/* FILTROS */}
-      <div className="flex flex-wrap gap-2 mb-6">
-        <button onClick={() => setFilter('all')} className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${filter === 'all' ? 'bg-yellow-400 text-black' : 'bg-zinc-900 text-zinc-400 border border-zinc-800 hover:text-white'}`}>Todas</button>
-        <button onClick={() => setFilter('unread')} className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${filter === 'unread' ? 'bg-yellow-400 text-black' : 'bg-zinc-900 text-zinc-400 border border-zinc-800 hover:text-white'}`}>No leídas</button>
-        <button onClick={() => setFilter('messages')} className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1 transition-all ${filter === 'messages' ? 'bg-blue-500 text-white' : 'bg-zinc-900 text-zinc-400 border border-zinc-800 hover:text-white'}`}><MessageSquare size={14}/> Mensajes</button>
-        <button onClick={() => setFilter('milestones')} className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1 transition-all ${filter === 'milestones' ? 'bg-yellow-400 text-black' : 'bg-zinc-900 text-zinc-400 border border-zinc-800 hover:text-white'}`}><Trophy size={14}/> Hitos</button>
-        <button onClick={() => setFilter('payments')} className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1 transition-all ${filter === 'payments' ? 'bg-red-500 text-white' : 'bg-zinc-900 text-zinc-400 border border-zinc-800 hover:text-white'}`}><CreditCard size={14}/> Pagos</button>
+      {/* FILTROS TIPO PÍLDORA */}
+      <div className="flex overflow-x-auto gap-3 mb-8 pb-2 no-scrollbar">
+        {[
+          { id: 'all', label: 'Todas', icon: null },
+          { id: 'unread', label: `No leídas (${unreadTotal})`, icon: null },
+          { id: 'messages', label: 'Mensajes', icon: <MessageSquare size={14}/> },
+          { id: 'milestones', label: 'Hitos', icon: <Trophy size={14}/> },
+          { id: 'payments', label: 'Cobros', icon: <CreditCard size={14}/> },
+        ].map(btn => (
+          <button 
+            key={btn.id}
+            onClick={() => setFilter(btn.id)} 
+            className={`px-5 py-2.5 rounded-full text-xs font-black uppercase tracking-widest flex items-center gap-2 transition-all shrink-0 border ${
+              filter === btn.id 
+                ? 'bg-yellow-400 text-black border-yellow-400 shadow-[0_0_15px_rgba(250,204,21,0.3)]' 
+                : 'bg-zinc-900 text-zinc-500 border-zinc-800 hover:text-white hover:bg-zinc-800'
+            }`}
+          >
+            {btn.icon} {btn.label}
+          </button>
+        ))}
       </div>
 
       {/* LISTA DE NOTIFICACIONES */}
-      <div className="space-y-3">
+      <div className="space-y-4">
         {filteredNotifications.length > 0 ? (
-          filteredNotifications.map((notif) => (
-            <div 
-              key={notif.id} 
-              className={`p-4 md:p-5 rounded-2xl border flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all group ${getBgColor(notif.type, notif.read)}`}
-            >
-              <div className="flex items-start gap-4 w-full">
-                <div className="p-3 bg-zinc-950 rounded-xl border border-zinc-800 shadow-inner mt-1 md:mt-0 shrink-0">
-                  {getIcon(notif.type)}
-                </div>
-                <div className="flex-1">
-                  <h3 className={`font-bold text-sm md:text-base mb-1 ${notif.read ? 'text-zinc-400' : 'text-white'}`}>
-                    {notif.title}
-                  </h3>
-                  
-                  {/* AQUÍ ESTÁ LA MAGIA: MOSTRAR EL NOMBRE DEL ALUMNO */}
-                  {notif.clientName && (
-                    <div className="flex items-center gap-1 mb-2">
-                      <User size={12} className="text-yellow-400" />
-                      <span className="text-[11px] font-black uppercase tracking-widest text-yellow-400">
-                        Atleta: {notif.clientName}
-                      </span>
-                    </div>
-                  )}
+          filteredNotifications.map((notif) => {
+            const styles = getTypeStyles(notif.type, notif.read);
+            
+            return (
+              <div 
+                key={notif.id} 
+                className={`relative p-5 md:p-6 rounded-2xl border transition-all duration-300 group flex flex-col md:flex-row md:items-center justify-between gap-5 overflow-hidden ${styles.cardBg}`}
+              >
+                {/* LÍNEA DE ACENTO LATERAL */}
+                <div className={`absolute left-0 top-0 bottom-0 w-1 ${styles.accentLine}`}></div>
 
-                  <p className={`text-xs md:text-sm leading-relaxed max-w-2xl ${notif.read ? 'text-zinc-600' : 'text-zinc-300'}`}>
-                    {notif.body}
-                  </p>
-                  
-                  <div className="flex items-center gap-1 mt-3 text-[10px] uppercase font-bold tracking-widest text-zinc-500">
-                    <Clock size={12} /> {formatTime(notif.createdAt)}
+                <div className="flex items-start gap-5 w-full">
+                  {/* ICONO */}
+                  <div className={`p-4 rounded-2xl border shrink-0 transition-colors ${styles.iconWrap}`}>
+                    {styles.icon}
+                  </div>
+
+                  {/* CONTENIDO */}
+                  <div className="flex-1 mt-1">
+                    <div className="flex items-center gap-3 mb-1.5 flex-wrap">
+                      <h3 className={`font-black uppercase tracking-tight text-sm md:text-base ${notif.read ? 'text-zinc-500' : 'text-white'}`}>
+                        {notif.title}
+                      </h3>
+                      {!notif.read && (
+                        <span className="h-2 w-2 rounded-full bg-red-500 animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]"></span>
+                      )}
+                    </div>
+                    
+                    {/* BADGE DEL ATLETA */}
+                    {notif.clientName && (
+                      <div className="inline-flex items-center gap-1.5 bg-zinc-950 border border-zinc-800 px-3 py-1 rounded-lg mb-3">
+                        <User size={12} className={notif.read ? 'text-zinc-600' : 'text-yellow-400'} />
+                        <span className={`text-[10px] font-black uppercase tracking-widest ${notif.read ? 'text-zinc-500' : 'text-zinc-300'}`}>
+                          {notif.clientName}
+                        </span>
+                      </div>
+                    )}
+
+                    <p className={`text-sm leading-relaxed max-w-3xl ${notif.read ? 'text-zinc-600' : 'text-zinc-400 font-medium'}`}>
+                      {notif.body}
+                    </p>
+                    
+                    <div className="flex items-center gap-1.5 mt-4 text-[10px] uppercase font-black tracking-widest text-zinc-600">
+                      <Clock size={12} /> {formatTime(notif.createdAt)}
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              {/* Acciones */}
-              <div className="flex md:flex-col gap-2 ml-14 md:ml-0 shrink-0">
-                {!notif.read && (
+                {/* BOTONES DE ACCIÓN (Aparecen en desktop al hacer hover) */}
+                <div className="flex md:flex-col gap-2 pl-16 md:pl-0 shrink-0">
+                  {!notif.read && (
+                    <button 
+                      onClick={() => markAsRead(notif)}
+                      className="flex-1 md:flex-none p-3 bg-zinc-950 hover:bg-green-500/10 text-zinc-500 hover:text-green-400 border border-zinc-800 hover:border-green-500/30 rounded-xl transition-all flex items-center justify-center"
+                      title="Marcar como resuelto"
+                    >
+                      <Check size={18} />
+                    </button>
+                  )}
                   <button 
-                    onClick={() => markAsRead(notif)}
-                    className="p-2 bg-zinc-950 hover:bg-green-500/20 text-zinc-400 hover:text-green-400 border border-zinc-800 rounded-lg transition-colors flex items-center justify-center"
-                    title="Marcar como leído"
+                    onClick={() => deleteNotification(notif)}
+                    className="flex-1 md:flex-none p-3 bg-zinc-950 hover:bg-red-500/10 text-zinc-500 hover:text-red-500 border border-zinc-800 hover:border-red-500/30 rounded-xl transition-all flex items-center justify-center opacity-100 md:opacity-0 group-hover:opacity-100"
+                    title="Eliminar registro"
                   >
-                    <Check size={16} />
+                    <Trash2 size={18} />
                   </button>
-                )}
-                <button 
-                  onClick={() => deleteNotification(notif)}
-                  className="p-2 bg-zinc-950 hover:bg-red-500/20 text-zinc-400 hover:text-red-500 border border-zinc-800 rounded-lg transition-colors flex items-center justify-center opacity-100 md:opacity-0 group-hover:opacity-100"
-                  title="Eliminar notificación"
-                >
-                  <Trash2 size={16} />
-                </button>
+                </div>
               </div>
-            </div>
-          ))
+            );
+          })
         ) : (
-          <div className="flex flex-col items-center justify-center py-24 bg-zinc-900/30 rounded-[2rem] border border-dashed border-zinc-800">
-            <Bell size={48} className="mb-4 opacity-20 text-zinc-500" />
-            <h3 className="text-zinc-400 font-bold text-lg mb-1">Todo al día, Capitán</h3>
-            <p className="text-zinc-600 font-medium text-sm text-center max-w-xs">
-              No tienes {filter !== 'all' ? 'este tipo de' : ''} notificaciones nuevas por el momento.
+          <div className="flex flex-col items-center justify-center py-32 bg-zinc-900/30 rounded-[2.5rem] border border-dashed border-zinc-800 relative overflow-hidden">
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-yellow-400/5 blur-[100px] rounded-full pointer-events-none"></div>
+            <Bell size={64} className="mb-6 text-zinc-800" strokeWidth={1} />
+            <h3 className="text-zinc-300 font-black text-xl uppercase tracking-widest mb-2">Radar Despejado</h3>
+            <p className="text-zinc-600 font-medium text-sm text-center max-w-sm">
+              No hay {filter !== 'all' ? 'este tipo de' : ''} alertas en el sistema. Todo marcha sobre ruedas.
             </p>
           </div>
         )}
