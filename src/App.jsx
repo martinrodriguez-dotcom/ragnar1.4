@@ -19,8 +19,8 @@ import StudentView from './views/StudentView';
 import StudentRegistration from './views/StudentRegistration';
 import NotificationsView from './views/NotificationsView';
 import SettingsView from './views/SettingsView';
-import CommunityView from './views/CommunityView'; // Agregado
-import PaymentsView from './views/PaymentsView'; // Agregado
+import CommunityView from './views/CommunityView'; // Nueva página
+import PaymentsView from './views/PaymentsView'; // Nueva página
 
 export default function App() {
   // --- ESTADOS GLOBALES ---
@@ -39,8 +39,8 @@ export default function App() {
   const [selectedClient, setSelectedClient] = useState(null);
   const [clients, setClients] = useState([]);
   const [exercises, setExercises] = useState([]);
-  const [routines, setRoutines] = useState([]); // Faltaba en tu base
-  const [settings, setSettings] = useState(null); // Para los planes de cobro
+  const [routines, setRoutines] = useState([]); // Agregado para rutinas
+  const [settings, setSettings] = useState(null); // Agregado para configuración/planes
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
 
@@ -48,10 +48,12 @@ export default function App() {
 
   // --- EFECTO 1: Gestión de Sesión y Parámetros de URL ---
   useEffect(() => {
+    // 1. Detectar si el usuario viene por un link de invitación
     const params = new URLSearchParams(window.location.search);
     const inviteParam = params.get('invite');
     if (inviteParam) setInviteId(inviteParam);
 
+    // 2. Escuchar cambios en la autenticación
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
         await checkUserRole(currentUser.uid);
@@ -66,6 +68,7 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
+  // Función para determinar si el UID pertenece a un alumno o al entrenador
   const checkUserRole = async (uid) => {
     try {
       const q = query(collection(db, 'clients'), where('studentUserId', '==', uid));
@@ -86,23 +89,28 @@ export default function App() {
   useEffect(() => {
     if (!user || userRole !== 'trainer') return;
 
+    // Escuchar Clientes
     const unsubClients = onSnapshot(collection(db, 'clients'), (snapshot) => {
       setClients(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
+    // Escuchar Biblioteca de Ejercicios
     const qExercises = query(collection(db, 'exercises'), orderBy('name'));
     const unsubExercises = onSnapshot(qExercises, (snapshot) => {
       setExercises(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
+    // Escuchar Rutinas
     const unsubRoutines = onSnapshot(collection(db, 'routines'), (snapshot) => {
       setRoutines(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
+    // Escuchar Configuración General
     const unsubSettings = onSnapshot(doc(db, 'settings', 'general'), (docSnap) => {
       if (docSnap.exists()) setSettings(docSnap.data());
     });
 
+    // Escuchar Notificaciones no leídas
     const qNotif = query(collection(db, 'trainerNotifications'), where('read', '==', false));
     const unsubNotif = onSnapshot(qNotif, (snapshot) => {
       setUnreadCount(snapshot.size);
@@ -118,9 +126,11 @@ export default function App() {
   }, [user, userRole]);
 
   // --- FUNCIONES DE NAVEGACIÓN Y AUTH ---
+
   const handleLogout = async () => {
     try {
       await signOut(auth);
+      // Limpiar URL para evitar re-entradas accidentales a registro
       window.history.pushState({}, document.title, window.location.pathname);
       setInviteId(null);
     } catch (error) { console.error("Error logout:", error); }
@@ -133,6 +143,7 @@ export default function App() {
   };
 
   // --- FUNCIONES DE GESTIÓN (CRUD) ---
+
   const handleAddClient = async (data) => {
     try {
       await addDoc(collection(db, 'clients'), { 
@@ -155,16 +166,39 @@ export default function App() {
     if(window.confirm('¿Estás seguro de eliminar este cliente y todos sus registros?')) {
       try {
         await deleteDoc(doc(db, 'clients', clientId));
+        if (selectedClient?.id === clientId) {
+          setCurrentView('clients');
+          setSelectedClient(null);
+        }
       } catch (error) { console.error(error); }
     }
   };
 
+  // --- FUNCIÓN RECUPERADA DE TU CÓDIGO ORIGINAL ---
+  const updateClientRoutine = async (clientId, newEx) => {
+    try {
+      const clientRef = doc(db, 'clients', clientId);
+      const current = clients.find(c => c.id === clientId);
+      const updated = [...(current.routine || []), newEx];
+      await updateDoc(clientRef, { routine: updated });
+      if (selectedClient?.id === clientId) setSelectedClient(prev => ({ ...prev, routine: updated }));
+    } catch (error) { console.error(error); }
+  };
+
   const handleAddExercise = async (data) => { 
-    try { await addDoc(collection(db, 'exercises'), data); } catch (error) { console.error(error); }
+    try { 
+      await addDoc(collection(db, 'exercises'), { 
+        name: data.name, 
+        videoUrl: data.videoUrl || '' 
+      }); 
+    } catch (error) { console.error(error); }
   };
 
   const handleUpdateExercise = async (updatedData) => {
-    try { const { id, ...rest } = updatedData; await updateDoc(doc(db, 'exercises', id), rest); } catch (error) { console.error(error); }
+    try { 
+      const { id, ...rest } = updatedData; 
+      await updateDoc(doc(db, 'exercises', id), rest); 
+    } catch (error) { console.error(error); }
   };
   
   const handleDeleteExercise = async (id) => { 
@@ -173,6 +207,7 @@ export default function App() {
     }
   };
 
+  // --- FUNCIONES AGREGADAS PARA RUTINAS GLOBALES Y CONFIGURACIÓN ---
   const handleAddRoutine = async (data) => {
     try { await addDoc(collection(db, 'routines'), data); } catch (error) { console.error(error); }
   };
@@ -193,6 +228,8 @@ export default function App() {
 
 
   // --- LÓGICA DE RENDERIZADO ---
+
+  // 1. Pantalla de Carga Inicial
   if (loadingAuth) {
     return (
       <div className="h-screen bg-black flex items-center justify-center">
@@ -201,6 +238,7 @@ export default function App() {
     );
   }
 
+  // 2. Registro de Alumno (Link de invitación activo)
   if (inviteId && (!user || (user && userRole !== 'student'))) {
     return (
       <StudentRegistration 
@@ -213,14 +251,17 @@ export default function App() {
     );
   }
 
+  // 3. Vista del Alumno
   if (user && userRole === 'student' && studentProfileId) {
     return <StudentView clientId={studentProfileId} />;
   }
 
+  // 4. Pantalla de Login (Si no hay usuario)
   if (!user) {
     return <LoginView onLoginSuccess={() => {}} />;
   }
 
+  // 5. Interfaz del Entrenador (Layout Principal)
   return (
     <div className="flex h-screen bg-black text-zinc-100 font-sans overflow-hidden">
       
@@ -233,7 +274,7 @@ export default function App() {
         />
       </div>
       
-      {/* Menú Móvil Desplegable (Con todas las páginas) */}
+      {/* Menú Móvil Desplegable */}
       {isMobileMenuOpen && (
         <div className="fixed inset-0 z-50 bg-black/95 md:hidden flex flex-col animate-in fade-in backdrop-blur-sm">
           <div className="p-4 flex justify-between items-center border-b border-zinc-800">
@@ -250,8 +291,11 @@ export default function App() {
             <button onClick={() => navigateTo('exercises')} className="p-4 text-left text-zinc-400 border-b border-zinc-900 flex items-center gap-3"><List size={20}/> Ejercicios</button>
             <button onClick={() => navigateTo('routines')} className="p-4 text-left text-zinc-400 border-b border-zinc-900 flex items-center gap-3"><Layout size={20}/> Rutinas</button>
             <button onClick={() => navigateTo('calendar')} className="p-4 text-left text-zinc-400 border-b border-zinc-900 flex items-center gap-3"><Calendar size={20}/> Agenda</button>
+            
+            {/* NUEVAS VISTAS EN EL MENÚ MÓVIL */}
             <button onClick={() => navigateTo('community')} className="p-4 text-left text-zinc-400 border-b border-zinc-900 flex items-center gap-3"><MessageSquare size={20}/> Salón Ragnar</button>
             <button onClick={() => navigateTo('payments')} className="p-4 text-left text-zinc-400 border-b border-zinc-900 flex items-center gap-3"><CreditCard size={20}/> Cobros</button>
+            
             <button onClick={() => navigateTo('settings')} className="p-4 text-left text-zinc-400 border-b border-zinc-900 flex items-center gap-3"><Settings size={20}/> Configuración</button>
             <button onClick={handleLogout} className="p-4 text-left text-red-500 font-bold flex items-center gap-3 mt-4"><LogOut size={20} /> Cerrar Sesión</button>
           </div>
@@ -278,14 +322,14 @@ export default function App() {
           </div>
         </header>
 
-        {/* Inyección de Vistas Dinámicas Completas */}
+        {/* Inyección de Vistas Dinámicas */}
         <div className="flex-1 overflow-y-auto p-4 md:p-8 no-scrollbar">
           {activeView === 'dashboard' && (
             <DashboardView clients={clients} navigateTo={navigateTo} onAddClient={handleAddClient} />
           )}
           
           {activeView === 'notifications' && (
-            <NotificationsView />
+            <NotificationsView navigateTo={navigateTo} clients={clients} />
           )}
 
           {activeView === 'clients' && (
@@ -294,7 +338,7 @@ export default function App() {
               settings={settings}
               routines={routines}
               navigateTo={navigateTo} 
-              onAddClient={handleAddClient}
+              onAddClient={handleAddClient} 
               onUpdateClient={handleUpdateClientData} 
               onDeleteClient={handleDeleteClient}
             />
@@ -334,6 +378,7 @@ export default function App() {
             <CalendarView clients={clients} />
           )}
 
+          {/* LAS NUEVAS VISTAS INTEGRADAS AL RENDERING */}
           {activeView === 'settings' && (
             <SettingsView settings={settings} onUpdateSettings={handleUpdateSettings} />
           )}
@@ -348,6 +393,7 @@ export default function App() {
         </div>
       </main>
 
+      {/* Botón Flotante de Logout para Desktop */}
       <button 
         onClick={handleLogout} 
         className="hidden md:flex fixed bottom-6 left-6 w-52 items-center gap-3 text-zinc-500 hover:text-red-400 transition-all p-2 z-10 font-bold text-xs uppercase tracking-widest"
