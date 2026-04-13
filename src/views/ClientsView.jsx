@@ -19,21 +19,24 @@ export default function ClientsView({
     name: '',
     email: '',
     plan: '',
-    startDate: new Date().toISOString().split('T')[0]
+    startDate: ''
   });
 
   // Aseguramos que siempre sean arrays
   const safeClients = Array.isArray(clients) ? clients : [];
   
-  // SOLUCIÓN AL ERROR #31: Asegurarnos de que safePlans sea siempre un array de Strings
+  // Forzamos a que todo plan sea estrictamente texto puro
   const safePlans = settings?.plans && Array.isArray(settings.plans) && settings.plans.length > 0 
-    ? settings.plans.map(plan => typeof plan === 'object' ? plan.name : plan) 
+    ? settings.plans.map(p => typeof p === 'object' && p !== null ? String(p.name) : String(p)) 
     : ['Plan Base'];
 
-  const filteredClients = safeClients.filter(client => 
-    (client.name && client.name.toLowerCase().includes(searchTerm.toLowerCase())) ||
-    (client.email && client.email.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+  // Filtrado a prueba de fallos
+  const filteredClients = safeClients.filter(c => {
+    const cName = c.name ? String(c.name).toLowerCase() : '';
+    const cEmail = c.email ? String(c.email).toLowerCase() : '';
+    const search = String(searchTerm).toLowerCase();
+    return cName.includes(search) || cEmail.includes(search);
+  });
 
   const openAddModal = () => {
     setEditingClient(null);
@@ -49,17 +52,17 @@ export default function ClientsView({
   const openEditModal = (client) => {
     setEditingClient(client);
     
-    // Si por algún motivo el plan guardado es un objeto, sacamos el nombre
-    let clientPlanName = client.plan;
+    // Extraemos el nombre del plan por si se guardó como objeto accidentalmente en el pasado
+    let planStr = client.plan || safePlans[0];
     if (typeof client.plan === 'object' && client.plan !== null) {
-      clientPlanName = client.plan.name;
+      planStr = client.plan.name || safePlans[0];
     }
 
     setFormData({
-      name: client.name || '',
-      email: client.email || '',
-      plan: clientPlanName || safePlans[0],
-      startDate: client.startDate || new Date().toISOString().split('T')[0]
+      name: String(client.name || ''),
+      email: String(client.email || ''),
+      plan: String(planStr),
+      startDate: client.startDate ? String(client.startDate) : new Date().toISOString().split('T')[0]
     });
     setIsModalOpen(true);
   };
@@ -67,21 +70,28 @@ export default function ClientsView({
   const handleSubmit = (e) => {
     e.preventDefault();
     
-    if (!formData.name.trim()) {
-      return;
-    }
+    // Verificamos que el nombre no esté vacío
+    if (!formData.name || String(formData.name).trim() === '') return;
+
+    // Estructura estrictamente guardada como texto puro, sin objetos que rompan React
+    const dataToSave = {
+      name: String(formData.name),
+      email: String(formData.email),
+      plan: String(formData.plan || safePlans[0]),
+      startDate: String(formData.startDate)
+    };
 
     if (editingClient) {
       if (typeof onUpdateClient === 'function') {
-        onUpdateClient({ ...editingClient, ...formData });
+        onUpdateClient({ ...editingClient, ...dataToSave });
       } else {
-        console.error("Fallo de conexión: onUpdateClient no está definido");
+        console.error("La función onUpdateClient no está disponible.");
       }
     } else {
       if (typeof onAddClient === 'function') {
-        onAddClient(formData);
+        onAddClient(dataToSave);
       } else {
-        console.error("Fallo de conexión: onAddClient no está definido");
+        console.error("La función onAddClient no está disponible.");
       }
     }
     
@@ -104,7 +114,6 @@ export default function ClientsView({
   return (
     <div className="max-w-6xl mx-auto animate-in fade-in pb-10">
       
-      {/* HEADER Y BUSCADOR */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
         <div>
           <h2 className="text-3xl font-black text-white uppercase italic tracking-tighter">Mis Atletas</h2>
@@ -118,7 +127,7 @@ export default function ClientsView({
             </div>
             <input 
               type="text" 
-              placeholder="Buscar por nombre o email..." 
+              placeholder="Buscar por nombre..." 
               className="w-full bg-zinc-900 border border-zinc-800 rounded-xl pl-10 pr-4 py-3 text-white outline-none focus:border-yellow-400 text-sm transition-colors" 
               value={searchTerm} 
               onChange={(e) => setSearchTerm(e.target.value)} 
@@ -133,17 +142,12 @@ export default function ClientsView({
         </div>
       </div>
 
-      {/* LISTADO DE ATLETAS */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {filteredClients.length > 0 ? (
           filteredClients.map(client => (
             <div 
               key={client.id} 
-              onClick={() => {
-                if (typeof navigateTo === 'function') {
-                  navigateTo('client-detail', client);
-                }
-              }}
+              onClick={() => { if(typeof navigateTo === 'function') navigateTo('client-detail', client) }}
               className="bg-zinc-900 border border-zinc-800 p-5 rounded-3xl flex flex-col justify-between group hover:border-yellow-400/50 transition-all shadow-md cursor-pointer relative overflow-hidden"
             >
               <div className={`absolute top-0 right-0 px-3 py-1 text-[9px] font-black uppercase tracking-widest rounded-bl-xl ${client.studentUserId ? 'bg-green-500/20 text-green-500' : 'bg-zinc-800 text-zinc-500'}`}>
@@ -152,14 +156,14 @@ export default function ClientsView({
 
               <div className="flex items-start gap-4 mb-4 mt-2">
                 <div className="w-14 h-14 bg-black text-yellow-400 rounded-2xl flex items-center justify-center font-black text-xl border border-zinc-800 group-hover:bg-yellow-400 group-hover:text-black transition-colors shrink-0">
-                  {client.name ? client.name.charAt(0).toUpperCase() : '?'}
+                  {client.name ? String(client.name).charAt(0).toUpperCase() : '?'}
                 </div>
                 <div>
                   <h3 className="font-bold text-white uppercase tracking-tight leading-tight">
-                    {client.name}
+                    {client.name || 'Sin nombre'}
                   </h3>
                   <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest mt-1 truncate max-w-[150px]">
-                    {client.email || 'Sin email asignado'}
+                    {client.email || 'Sin email'}
                   </p>
                 </div>
               </div>
@@ -167,7 +171,7 @@ export default function ClientsView({
               <div className="space-y-2 mb-6">
                 <div className="flex items-center gap-2 text-xs text-zinc-400 font-medium bg-black/30 p-2 rounded-xl border border-zinc-800/50">
                   <Dumbbell size={14} className="text-yellow-400"/> 
-                  {typeof client.plan === 'object' ? client.plan.name : (client.plan || 'Plan Base')}
+                  {typeof client.plan === 'object' && client.plan !== null ? client.plan.name : (client.plan || 'Plan Base')}
                 </div>
                 <div className="flex items-center gap-2 text-xs text-zinc-400 font-medium bg-black/30 p-2 rounded-xl border border-zinc-800/50">
                   <Calendar size={14} className="text-yellow-400"/> 
@@ -188,18 +192,12 @@ export default function ClientsView({
                 <button 
                   onClick={() => openEditModal(client)}
                   className="p-2 bg-zinc-950 text-zinc-400 hover:text-blue-400 rounded-xl border border-zinc-800 transition-colors"
-                  title="Editar"
                 >
                   <Edit size={16}/>
                 </button>
                 <button 
-                  onClick={() => {
-                    if (typeof onDeleteClient === 'function') {
-                      onDeleteClient(client.id);
-                    }
-                  }}
+                  onClick={() => { if(typeof onDeleteClient === 'function') onDeleteClient(client.id) }}
                   className="p-2 bg-zinc-950 text-zinc-400 hover:text-red-500 rounded-xl border border-zinc-800 transition-colors"
-                  title="Eliminar"
                 >
                   <Trash2 size={16}/>
                 </button>
@@ -231,6 +229,7 @@ export default function ClientsView({
               </h2>
               <button 
                 onClick={() => setIsModalOpen(false)} 
+                type="button"
                 className="text-zinc-500 hover:text-white bg-zinc-800 p-2 rounded-full transition-colors"
               >
                 <X size={20} />
@@ -239,13 +238,10 @@ export default function ClientsView({
             
             <form onSubmit={handleSubmit} className="p-6 space-y-5">
               <div>
-                <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2">
-                  Nombre del Atleta
-                </label>
+                <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2">Nombre del Atleta</label>
                 <input 
                   type="text" 
                   required 
-                  placeholder="Ej. Juan Pérez"
                   className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white outline-none focus:border-yellow-400 transition-colors" 
                   value={formData.name} 
                   onChange={e => setFormData({...formData, name: e.target.value})} 
@@ -253,12 +249,9 @@ export default function ClientsView({
               </div>
 
               <div>
-                <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2">
-                  Correo Electrónico (Para vincular app)
-                </label>
+                <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2">Correo Electrónico (Opcional)</label>
                 <input 
                   type="email" 
-                  placeholder="ejemplo@correo.com"
                   className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white outline-none focus:border-yellow-400 transition-colors" 
                   value={formData.email} 
                   onChange={e => setFormData({...formData, email: e.target.value})} 
@@ -266,9 +259,7 @@ export default function ClientsView({
               </div>
 
               <div>
-                <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2">
-                  Plan de Suscripción
-                </label>
+                <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2">Plan de Suscripción</label>
                 <select 
                   className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white outline-none focus:border-yellow-400 transition-colors text-sm" 
                   value={formData.plan} 
@@ -281,12 +272,10 @@ export default function ClientsView({
               </div>
 
               <div>
-                <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2">
-                  Fecha Base de Cobro
-                </label>
+                <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2">Fecha Base de Cobro</label>
                 <input 
                   type="date" 
-                  required
+                  required 
                   className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white outline-none focus:border-yellow-400 transition-colors [color-scheme:dark]" 
                   value={formData.startDate} 
                   onChange={e => setFormData({...formData, startDate: e.target.value})} 
