@@ -22,6 +22,11 @@ import PaymentsView from './views/PaymentsView';
 import CalendarView from './views/CalendarView'; 
 
 export default function App() {
+  // --- RASTREADOR DE VERSIÓN ---
+  useEffect(() => {
+    console.log("🚀 [APP.JSX] VERSIÓN 3 CARGADA - El archivo principal se actualizó correctamente.");
+  }, []);
+
   // --- ESTADOS DE AUTENTICACIÓN ---
   const [user, setUser] = useState(null);
   const [userRole, setUserRole] = useState(null); // 'coach', 'student', o null
@@ -132,6 +137,7 @@ export default function App() {
 
   // --- CLIENTES ---
   const handleAddClient = async (clientData) => {
+    console.log("🔵 [APP.JSX] Ejecutando handleAddClient para:", clientData);
     try {
       const clientsRef = collection(db, 'clients');
       const newDocRef = doc(clientsRef); // Genera una ID vacía de forma segura antes de guardar
@@ -140,16 +146,21 @@ export default function App() {
         createdAt: new Date(),
         active: true
       });
+      console.log("✅ [APP.JSX] Alumno guardado con éxito en Firebase con ID:", newDocRef.id);
     } catch (error) { 
-      console.error("Error crítico agregando cliente: ", error); 
+      console.error("❌ [APP.JSX] Error crítico agregando cliente: ", error); 
     }
   };
 
   const handleUpdateClient = async (updatedClient) => {
+    console.log("🔵 [APP.JSX] Ejecutando handleUpdateClient para:", updatedClient);
     try {
       const { id, ...data } = updatedClient;
       await updateDoc(doc(db, 'clients', id), data);
-    } catch (error) { console.error("Error actualizando cliente: ", error); }
+      console.log("✅ [APP.JSX] Alumno actualizado con éxito en Firebase");
+    } catch (error) { 
+      console.error("❌ [APP.JSX] Error actualizando cliente en Firebase: ", error); 
+    }
   };
 
   const handleDeleteClient = async (clientId) => {
