@@ -5,7 +5,7 @@ import {
   Dumbbell, CheckCircle, User, Menu, X, LogOut, MessageSquare, Send, 
   AlertTriangle, Trophy, CreditCard, ExternalLink, ChevronRight, Video, 
   Bell, Users, TrendingUp, Calendar as CalendarIcon, ChevronLeft, Timer, Clock,
-  Droplets, Activity // Iconos nuevos para hidratación y cardio
+  Droplets, Activity, Share2, Instagram, Smartphone
 } from 'lucide-react';
 import { doc, getDoc, collection, onSnapshot, setDoc, addDoc, query, orderBy, updateDoc } from 'firebase/firestore';
 import { getAuth, signOut } from 'firebase/auth';
@@ -23,7 +23,7 @@ export default function StudentView({ clientId }) {
   const [allSessionsIds, setAllSessionsIds] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // --- ESTADOS DE COMPLEMENTOS (NUEVO) ---
+  // --- ESTADOS DE COMPLEMENTOS ---
   const [hydration, setHydration] = useState('');
   const [cardioMinutes, setCardioMinutes] = useState('');
   const [cardioIntensity, setCardioIntensity] = useState('Baja');
@@ -35,6 +35,7 @@ export default function StudentView({ clientId }) {
   // --- ESTADOS DE INTERFAZ ---
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [currentView, setCurrentView] = useState('calendar'); 
+  const [showShareModal, setShowShareModal] = useState(false); // NUEVO MODAL DE COMPARTIR
 
   // --- ESTADOS DE CHAT ---
   const [messages, setMessages] = useState([]);
@@ -86,7 +87,7 @@ export default function StudentView({ clientId }) {
           setTrainerSettings(settingsSnap.data());
         }
 
-        // VERIFICACIÓN DE PAGO CON DÍAS DE GRACIA
+        // LÓGICA DE GUILLOTINA
         const paymentRef = doc(db, 'clients', clientId, 'payments', currentMonthId);
         const paymentSnap = await getDoc(paymentRef);
         let isPaid = paymentSnap.exists() && paymentSnap.data().status === 'paid';
@@ -337,7 +338,7 @@ export default function StudentView({ clientId }) {
   };
 
   const handleFinishWorkout = async () => {
-    if (!window.confirm('¿Confirmas que has terminado el entrenamiento de hoy y compartir en el Salón?')) return;
+    if (!window.confirm('¿Confirmas que has terminado el entrenamiento de hoy?')) return;
     try {
       await updateDoc(doc(db, 'clients', clientId, 'sessions', currentDateId), { 
         isFinalized: true, completedAt: new Date() 
@@ -361,9 +362,36 @@ export default function StudentView({ clientId }) {
       });
       setIsSessionFinalized(true);
       setTimerEndTime(null);
-      setCurrentView('community');
+      // En vez de enviarlo a la comunidad de golpe, le abrimos su trofeo para que lo comparta
+      setShowShareModal(true);
     } catch (error) { 
       console.error(error); 
+    }
+  };
+
+  // --- COMPARTIR VICTORIA (NATIVO MÓVIL) ---
+  const handleShareStory = async () => {
+    // Calculamos el total de series completadas para el texto
+    let totalCompletedSets = 0;
+    dailySession.forEach(ex => {
+      if (ex.actualSets) {
+        totalCompletedSets += ex.actualSets.filter(s => s.completed).length;
+      }
+    });
+
+    const shareData = {
+      title: '¡Entrenamiento Completado!',
+      text: `🐺 RAGNAR TRAINING\n\nHoy destruí mi rutina: ${date.toLocaleDateString('es-ES', { weekday: 'long' })}\n\n🏋️‍♂️ Ejercicios: ${dailySession.length}\n🔥 Series Completadas: ${totalCompletedSets}\n💦 Hidratación: ${hydration || 0} Lts\n❤️‍🔥 Cardio: ${cardioMinutes || 0} Min\n\n¡Súmate al equipo! 🐺💪`
+    };
+
+    if (navigator.share) {
+      try {
+        await navigator.share(shareData);
+      } catch (err) {
+        console.error('Error al compartir:', err);
+      }
+    } else {
+      alert("Tu dispositivo no soporta compartir directamente. ¡Toma una captura de pantalla a la tarjeta!");
     }
   };
 
@@ -385,6 +413,10 @@ export default function StudentView({ clientId }) {
     window.location.reload(); 
   };
 
+  // CÁLCULOS PARA LA TARJETA STRAVA
+  const getTotalSets = () => dailySession.reduce((acc, ex) => acc + (ex.plannedSets ? ex.plannedSets.length : parseInt(ex.sets || 0)), 0);
+  const getEstimatedTime = () => getTotalSets() * 3; // 3 mins estimados por serie (incluye descanso)
+
   // --- RENDERIZADO INICIAL ---
   if (loading) {
     return (
@@ -397,6 +429,92 @@ export default function StudentView({ clientId }) {
   return (
     <div className="min-h-screen bg-zinc-950 text-white font-sans flex flex-col relative overflow-x-hidden">
       
+      {/* MODAL STRAVA (TARJETA DE VICTORIA) */}
+      {showShareModal && (
+        <div className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-xl flex flex-col items-center justify-center p-4 animate-in zoom-in-95 duration-300">
+          
+          <div className="text-center mb-6">
+            <h2 className="text-white font-black text-2xl uppercase tracking-widest italic flex items-center justify-center gap-2">
+              <Trophy className="text-yellow-400" size={28}/>
+              ¡Misión Cumplida!
+            </h2>
+            <p className="text-zinc-400 text-sm mt-2">Toma una captura (Screenshot) o compártelo.</p>
+          </div>
+
+          {/* LA TARJETA VISUAL */}
+          <div id="ragnar-story-card" className="w-full max-w-[340px] aspect-[9/16] bg-zinc-950 border border-zinc-800 rounded-[2.5rem] shadow-2xl relative overflow-hidden flex flex-col justify-between p-8">
+             
+             {/* Decoración de fondo */}
+             <div className="absolute -top-20 -right-20 w-64 h-64 bg-yellow-400/10 blur-3xl rounded-full pointer-events-none"></div>
+             <div className="absolute -bottom-20 -left-20 w-64 h-64 bg-yellow-400/5 blur-3xl rounded-full pointer-events-none"></div>
+
+             {/* Top: Logo */}
+             <div className="flex flex-col items-center z-10">
+               <div className="w-16 h-16 bg-yellow-400 rounded-2xl flex items-center justify-center text-black font-black text-3xl italic shadow-lg mb-4">
+                 R
+               </div>
+               <span className="font-black tracking-[0.3em] uppercase text-xs text-zinc-400">Ragnar Training</span>
+             </div>
+
+             {/* Mid: Stats */}
+             <div className="z-10 w-full">
+               <h3 className="text-3xl font-black uppercase italic tracking-tighter text-white leading-none mb-1 text-center">
+                 {date.toLocaleDateString('es-ES', { weekday: 'long' })}
+               </h3>
+               <p className="text-yellow-400 font-bold text-[10px] uppercase tracking-[0.2em] text-center mb-8">
+                 {date.toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' })}
+               </p>
+
+               <div className="space-y-4">
+                 <div className="flex justify-between items-center bg-black/40 border border-zinc-800/50 p-4 rounded-2xl">
+                   <div className="flex items-center gap-3"><Clock size={20} className="text-yellow-400"/><span className="text-xs font-black uppercase text-zinc-400 tracking-widest">Tiempo Aprox.</span></div>
+                   <span className="text-lg font-black text-white">{getEstimatedTime()} Min</span>
+                 </div>
+
+                 <div className="flex justify-between items-center bg-black/40 border border-zinc-800/50 p-4 rounded-2xl">
+                   <div className="flex items-center gap-3"><Dumbbell size={20} className="text-yellow-400"/><span className="text-xs font-black uppercase text-zinc-400 tracking-widest">Ejercicios</span></div>
+                   <span className="text-lg font-black text-white">{dailySession.length}</span>
+                 </div>
+
+                 <div className="grid grid-cols-2 gap-4">
+                   <div className="bg-black/40 border border-zinc-800/50 p-4 rounded-2xl flex flex-col items-center justify-center text-center">
+                     <Droplets size={20} className="text-blue-400 mb-2"/>
+                     <span className="text-lg font-black text-white">{hydration || 0} Lts</span>
+                   </div>
+                   <div className="bg-black/40 border border-zinc-800/50 p-4 rounded-2xl flex flex-col items-center justify-center text-center">
+                     <Activity size={20} className="text-red-400 mb-2"/>
+                     <span className="text-lg font-black text-white">{cardioMinutes || 0} Min</span>
+                   </div>
+                 </div>
+               </div>
+             </div>
+
+             {/* Bottom: Atleta */}
+             <div className="z-10 text-center border-t border-zinc-800/50 pt-6">
+               <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest mb-1">Atleta Oficial</p>
+               <p className="text-xl font-black uppercase text-white tracking-tight">{client?.name}</p>
+             </div>
+          </div>
+
+          {/* ACCIONES DE COMPARTIR */}
+          <div className="mt-8 flex flex-col gap-4 w-full max-w-[340px]">
+            <button 
+              onClick={handleShareStory}
+              className="w-full bg-gradient-to-r from-yellow-400 to-yellow-500 text-black font-black py-4 rounded-2xl uppercase tracking-widest flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(250,204,21,0.3)] active:scale-95 transition-transform"
+            >
+              <Share2 size={20}/> Compartir 
+            </button>
+            <button 
+              onClick={() => { setShowShareModal(false); setCurrentView('community'); }}
+              className="w-full text-zinc-500 font-bold uppercase text-xs tracking-widest py-3 hover:text-white transition-colors"
+            >
+              Ir al Salón Ragnar
+            </button>
+          </div>
+
+        </div>
+      )}
+
       {/* MODAL DE DEUDA DE PAGO CON DÍAS DE GRACIA */}
       {showPaymentModal && (
         <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-md flex items-center justify-center p-6 animate-in fade-in">
@@ -606,13 +724,24 @@ export default function StudentView({ clientId }) {
                 >
                   <ChevronLeft size={24}/>
                 </button>
-                <div>
-                  <h2 className="text-2xl font-black text-white uppercase italic tracking-tighter leading-none">
-                    {isSessionFinalized ? 'Resumen' : 'Entrenar'}
-                  </h2>
-                  <p className="text-yellow-400 font-bold text-[10px] uppercase mt-1 tracking-widest">
-                    {date.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })}
-                  </p>
+                <div className="flex-1 flex justify-between items-center">
+                  <div>
+                    <h2 className="text-2xl font-black text-white uppercase italic tracking-tighter leading-none">
+                      {isSessionFinalized ? 'Resumen' : 'Entrenar'}
+                    </h2>
+                    <p className="text-yellow-400 font-bold text-[10px] uppercase mt-1 tracking-widest">
+                      {date.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })}
+                    </p>
+                  </div>
+                  {isSessionFinalized && (
+                    <button 
+                      onClick={() => setShowShareModal(true)} 
+                      className="p-2 bg-yellow-400/10 text-yellow-400 border border-yellow-400/30 rounded-xl hover:bg-yellow-400/20 transition-colors"
+                      title="Compartir Victoria"
+                    >
+                      <Share2 size={20}/>
+                    </button>
+                  )}
                 </div>
             </div>
 
@@ -738,7 +867,8 @@ export default function StudentView({ clientId }) {
                         )}
                       </div>
 
-                      {ex.rir && (
+                      {/* Adaptador para RIR (Si es viejo y global) */}
+                      {ex.rir && !ex.plannedSets && (
                         <div className="mb-4 bg-black/40 p-3 rounded-xl border border-zinc-800/50">
                           <div className="flex justify-between items-center mb-1.5">
                              <span className="text-[10px] text-zinc-500 font-black uppercase">Intensidad</span>
@@ -760,37 +890,76 @@ export default function StudentView({ clientId }) {
                       </div>
                       
                       <div className="space-y-2">
-                        {[...Array(parseInt(ex.sets || 0))].map((_, sIdx) => {
-                          const isDone = dailySession[exIdx].actualSets?.[sIdx]?.completed;
-                          return (
-                            <div key={sIdx} className={`grid grid-cols-4 gap-2 items-center p-2 rounded-2xl transition-colors ${isDone ? 'bg-green-500/10 border border-green-500/20' : 'bg-black/30 border border-zinc-800/50'}`}>
-                              <span className="font-bold text-sm ml-2 text-white"># {sIdx + 1}</span>
-                              <span className="text-center text-xs text-zinc-400">{ex.reps}</span>
-                              <input 
-                                type="number" 
-                                placeholder="0" 
-                                disabled={isSessionFinalized} 
-                                className="bg-zinc-800 border-none rounded-lg py-1 text-center text-sm font-bold text-white focus:ring-1 focus:ring-yellow-400 disabled:opacity-50" 
-                                value={dailySession[exIdx].actualSets?.[sIdx]?.reps || ''} 
-                                onChange={(e) => handleUpdateSet(exIdx, sIdx, 'reps', e.target.value)} 
-                              />
-                              <input 
-                                type="number" 
-                                placeholder="kg" 
-                                disabled={isSessionFinalized} 
-                                className="bg-zinc-800 border-none rounded-lg py-1 text-center text-sm font-bold text-white focus:ring-1 focus:ring-yellow-400 disabled:opacity-50" 
-                                value={dailySession[exIdx].actualSets?.[sIdx]?.weight || ''} 
-                                onChange={(e) => handleUpdateSet(exIdx, sIdx, 'weight', e.target.value)} 
-                              />
-                              <button 
-                                onClick={() => toggleSetComplete(exIdx, sIdx)} 
-                                className={`col-span-4 mt-1 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 ${isDone ? 'bg-green-500 text-black shadow-[0_0_10px_rgba(34,197,94,0.3)]' : 'bg-zinc-800 text-zinc-400 hover:text-white'}`}
-                              >
-                                {isDone ? <><CheckCircle size={14}/> Completada</> : 'Marcar Hecha'}
-                              </button>
-                            </div>
-                          );
-                        })}
+                        {/* Verificamos si usa plannedSets dinámicos o sets estáticos */}
+                        {ex.plannedSets ? (
+                          ex.plannedSets.map((set, sIdx) => {
+                            const isDone = dailySession[exIdx].actualSets?.[sIdx]?.completed;
+                            return (
+                              <div key={sIdx} className={`grid grid-cols-4 gap-2 items-center p-2 rounded-2xl transition-colors ${isDone ? 'bg-green-500/10 border border-green-500/20' : 'bg-black/30 border border-zinc-800/50'}`}>
+                                <span className="font-bold text-sm ml-2 text-white"># {sIdx + 1}</span>
+                                <div className="flex flex-col items-center justify-center">
+                                  <span className="text-center text-xs font-black text-zinc-400">{set.reps}</span>
+                                  <span className="text-[8px] uppercase font-black text-yellow-500 bg-yellow-500/10 px-1 rounded">RIR {set.rir}</span>
+                                </div>
+                                <input 
+                                  type="number" 
+                                  placeholder="0" 
+                                  disabled={isSessionFinalized} 
+                                  className="bg-zinc-800 border-none rounded-lg py-1 text-center text-sm font-bold text-white focus:ring-1 focus:ring-yellow-400 disabled:opacity-50" 
+                                  value={dailySession[exIdx].actualSets?.[sIdx]?.reps || ''} 
+                                  onChange={(e) => handleUpdateSet(exIdx, sIdx, 'reps', e.target.value)} 
+                                />
+                                <input 
+                                  type="number" 
+                                  placeholder="kg" 
+                                  disabled={isSessionFinalized} 
+                                  className="bg-zinc-800 border-none rounded-lg py-1 text-center text-sm font-bold text-white focus:ring-1 focus:ring-yellow-400 disabled:opacity-50" 
+                                  value={dailySession[exIdx].actualSets?.[sIdx]?.weight || ''} 
+                                  onChange={(e) => handleUpdateSet(exIdx, sIdx, 'weight', e.target.value)} 
+                                />
+                                <button 
+                                  onClick={() => toggleSetComplete(exIdx, sIdx)} 
+                                  className={`col-span-4 mt-1 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 ${isDone ? 'bg-green-500 text-black shadow-[0_0_10px_rgba(34,197,94,0.3)]' : 'bg-zinc-800 text-zinc-400 hover:text-white'}`}
+                                >
+                                  {isDone ? <><CheckCircle size={14}/> Completada</> : 'Marcar Hecha'}
+                                </button>
+                              </div>
+                            );
+                          })
+                        ) : (
+                          // Fallback si tiene una rutina vieja guardada sin `plannedSets`
+                          [...Array(parseInt(ex.sets || 0))].map((_, sIdx) => {
+                            const isDone = dailySession[exIdx].actualSets?.[sIdx]?.completed;
+                            return (
+                              <div key={sIdx} className={`grid grid-cols-4 gap-2 items-center p-2 rounded-2xl transition-colors ${isDone ? 'bg-green-500/10 border border-green-500/20' : 'bg-black/30 border border-zinc-800/50'}`}>
+                                <span className="font-bold text-sm ml-2 text-white"># {sIdx + 1}</span>
+                                <span className="text-center text-xs text-zinc-400">{ex.reps}</span>
+                                <input 
+                                  type="number" 
+                                  placeholder="0" 
+                                  disabled={isSessionFinalized} 
+                                  className="bg-zinc-800 border-none rounded-lg py-1 text-center text-sm font-bold text-white focus:ring-1 focus:ring-yellow-400 disabled:opacity-50" 
+                                  value={dailySession[exIdx].actualSets?.[sIdx]?.reps || ''} 
+                                  onChange={(e) => handleUpdateSet(exIdx, sIdx, 'reps', e.target.value)} 
+                                />
+                                <input 
+                                  type="number" 
+                                  placeholder="kg" 
+                                  disabled={isSessionFinalized} 
+                                  className="bg-zinc-800 border-none rounded-lg py-1 text-center text-sm font-bold text-white focus:ring-1 focus:ring-yellow-400 disabled:opacity-50" 
+                                  value={dailySession[exIdx].actualSets?.[sIdx]?.weight || ''} 
+                                  onChange={(e) => handleUpdateSet(exIdx, sIdx, 'weight', e.target.value)} 
+                                />
+                                <button 
+                                  onClick={() => toggleSetComplete(exIdx, sIdx)} 
+                                  className={`col-span-4 mt-1 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 ${isDone ? 'bg-green-500 text-black shadow-[0_0_10px_rgba(34,197,94,0.3)]' : 'bg-zinc-800 text-zinc-400 hover:text-white'}`}
+                                >
+                                  {isDone ? <><CheckCircle size={14}/> Completada</> : 'Marcar Hecha'}
+                                </button>
+                              </div>
+                            );
+                          })
+                        )}
                       </div>
                     </div>
                   ))
@@ -805,7 +974,7 @@ export default function StudentView({ clientId }) {
             {dailySession.length > 0 && !isSessionFinalized && (
               <button 
                 onClick={handleFinishWorkout} 
-                className="w-full bg-green-500 text-black font-black py-5 mt-6 rounded-[2rem] uppercase tracking-widest shadow-lg shadow-green-500/10 transition-transform active:scale-95"
+                className="w-full bg-green-500 text-black font-black py-5 mt-6 rounded-[2rem] uppercase tracking-widest shadow-lg shadow-green-500/10 transition-transform active:scale-95 flex items-center justify-center gap-2"
               >
                 <Trophy size={20} className="inline mr-2"/> Finalizar Sesión
               </button>
