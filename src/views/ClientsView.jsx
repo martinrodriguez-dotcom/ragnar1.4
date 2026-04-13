@@ -1,22 +1,19 @@
 import React, { useState } from 'react';
 import { Search, Plus, User, Trash2, Edit, Dumbbell, Calendar, Check, ChevronRight, Link, X } from 'lucide-react';
-// IMPORTACIONES DIRECTAS DE FIREBASE PARA BYPASSEAR EL ERROR
-import { collection, addDoc, doc, updateDoc, deleteDoc } from 'firebase/firestore';
-import { db } from '../firebase'; 
 
 export default function ClientsView({ 
   clients = [], 
   settings = null, 
   routines = [], 
-  navigateTo = () => {} 
+  navigateTo, 
+  onAddClient, 
+  onUpdateClient, 
+  onDeleteClient 
 }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingClient, setEditingClient] = useState(null);
   const [copiedId, setCopiedId] = useState(null);
-  
-  // Estado para bloquear el botón mientras guarda
-  const [isSubmitting, setIsSubmitting] = useState(false); 
 
   const [formData, setFormData] = useState({
     name: '',
@@ -25,15 +22,17 @@ export default function ClientsView({
     startDate: new Date().toISOString().split('T')[0]
   });
 
+  // Aseguramos que siempre sean arrays
   const safeClients = Array.isArray(clients) ? clients : [];
   
+  // SOLUCIÓN AL ERROR #31: Asegurarnos de que safePlans sea siempre un array de Strings
   const safePlans = settings?.plans && Array.isArray(settings.plans) && settings.plans.length > 0 
-    ? settings.plans.map(p => typeof p === 'object' ? p.name : p) 
+    ? settings.plans.map(plan => typeof plan === 'object' ? plan.name : plan) 
     : ['Plan Base'];
 
-  const filteredClients = safeClients.filter(c => 
-    c.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    c.email?.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredClients = safeClients.filter(client => 
+    (client.name && client.name.toLowerCase().includes(searchTerm.toLowerCase())) ||
+    (client.email && client.email.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
   const openAddModal = () => {
@@ -41,7 +40,7 @@ export default function ClientsView({
     setFormData({
       name: '',
       email: '',
-      plan: safePlans[0] || 'Plan Base',
+      plan: safePlans[0],
       startDate: new Date().toISOString().split('T')[0]
     });
     setIsModalOpen(true);
@@ -49,65 +48,57 @@ export default function ClientsView({
 
   const openEditModal = (client) => {
     setEditingClient(client);
-    const clientPlanName = typeof client.plan === 'object' ? client.plan.name : client.plan;
+    
+    // Si por algún motivo el plan guardado es un objeto, sacamos el nombre
+    let clientPlanName = client.plan;
+    if (typeof client.plan === 'object' && client.plan !== null) {
+      clientPlanName = client.plan.name;
+    }
 
     setFormData({
       name: client.name || '',
       email: client.email || '',
-      plan: clientPlanName || safePlans[0] || 'Plan Base',
+      plan: clientPlanName || safePlans[0],
       startDate: client.startDate || new Date().toISOString().split('T')[0]
     });
     setIsModalOpen(true);
   };
 
-  // --- LÓGICA DE GUARDADO DIRECTO EN FIREBASE ---
-  const handleSubmit = async (e) => {
+  const handleSubmit = (e) => {
     e.preventDefault();
-    const safeName = formData.name || "";
-    if (!safeName.trim()) return;
+    
+    if (!formData.name.trim()) {
+      return;
+    }
 
-    setIsSubmitting(true); // Bloqueamos el botón
-
-    try {
-      if (editingClient) {
-        // ACTUALIZAR DIRECTO
-        console.log("Actualizando cliente en DB...");
-        const { id, ...dataToUpdate } = { ...editingClient, ...formData };
-        await updateDoc(doc(db, 'clients', id), dataToUpdate);
+    if (editingClient) {
+      if (typeof onUpdateClient === 'function') {
+        onUpdateClient({ ...editingClient, ...formData });
       } else {
-        // CREAR DIRECTO
-        console.log("Creando cliente en DB...");
-        await addDoc(collection(db, 'clients'), {
-          ...formData,
-          createdAt: new Date(),
-          active: true
-        });
+        console.error("Fallo de conexión: onUpdateClient no está definido");
       }
-      setIsModalOpen(false);
-    } catch (error) {
-      console.error("❌ Error de escritura en Firebase:", error);
-      alert("Hubo un error de conexión al guardar. Revisa tu internet o la consola.");
-    } finally {
-      setIsSubmitting(false); // Desbloqueamos el botón
+    } else {
+      if (typeof onAddClient === 'function') {
+        onAddClient(formData);
+      } else {
+        console.error("Fallo de conexión: onAddClient no está definido");
+      }
     }
-  };
-
-  // --- LÓGICA DE BORRADO DIRECTO EN FIREBASE ---
-  const handleDeleteDirect = async (clientId) => {
-    if (!window.confirm('¿Estás seguro de eliminar este atleta? Perderá el acceso y se borrarán sus datos.')) return;
-    try {
-      await deleteDoc(doc(db, 'clients', clientId));
-    } catch (error) {
-      console.error("❌ Error eliminando cliente:", error);
-    }
+    
+    setIsModalOpen(false);
   };
 
   const handleCopyLink = (e, clientId) => {
     e.stopPropagation(); 
+    if (typeof navigateTo !== 'function') return;
+    
     const inviteLink = `${window.location.origin}?invite=${clientId}`;
     navigator.clipboard.writeText(inviteLink);
+    
     setCopiedId(clientId);
-    setTimeout(() => setCopiedId(null), 2000);
+    setTimeout(() => {
+      setCopiedId(null);
+    }, 2000);
   };
 
   return (
@@ -148,7 +139,11 @@ export default function ClientsView({
           filteredClients.map(client => (
             <div 
               key={client.id} 
-              onClick={() => navigateTo('client-detail', client)}
+              onClick={() => {
+                if (typeof navigateTo === 'function') {
+                  navigateTo('client-detail', client);
+                }
+              }}
               className="bg-zinc-900 border border-zinc-800 p-5 rounded-3xl flex flex-col justify-between group hover:border-yellow-400/50 transition-all shadow-md cursor-pointer relative overflow-hidden"
             >
               <div className={`absolute top-0 right-0 px-3 py-1 text-[9px] font-black uppercase tracking-widest rounded-bl-xl ${client.studentUserId ? 'bg-green-500/20 text-green-500' : 'bg-zinc-800 text-zinc-500'}`}>
@@ -157,10 +152,12 @@ export default function ClientsView({
 
               <div className="flex items-start gap-4 mb-4 mt-2">
                 <div className="w-14 h-14 bg-black text-yellow-400 rounded-2xl flex items-center justify-center font-black text-xl border border-zinc-800 group-hover:bg-yellow-400 group-hover:text-black transition-colors shrink-0">
-                  {client.name?.charAt(0).toUpperCase()}
+                  {client.name ? client.name.charAt(0).toUpperCase() : '?'}
                 </div>
                 <div>
-                  <h3 className="font-bold text-white uppercase tracking-tight leading-tight">{client.name}</h3>
+                  <h3 className="font-bold text-white uppercase tracking-tight leading-tight">
+                    {client.name}
+                  </h3>
                   <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest mt-1 truncate max-w-[150px]">
                     {client.email || 'Sin email asignado'}
                   </p>
@@ -169,10 +166,12 @@ export default function ClientsView({
               
               <div className="space-y-2 mb-6">
                 <div className="flex items-center gap-2 text-xs text-zinc-400 font-medium bg-black/30 p-2 rounded-xl border border-zinc-800/50">
-                  <Dumbbell size={14} className="text-yellow-400"/> {typeof client.plan === 'object' ? client.plan.name : (client.plan || 'Plan Base')}
+                  <Dumbbell size={14} className="text-yellow-400"/> 
+                  {typeof client.plan === 'object' ? client.plan.name : (client.plan || 'Plan Base')}
                 </div>
                 <div className="flex items-center gap-2 text-xs text-zinc-400 font-medium bg-black/30 p-2 rounded-xl border border-zinc-800/50">
-                  <Calendar size={14} className="text-yellow-400"/> Inicio: {client.startDate ? new Date(client.startDate).toLocaleDateString('es-ES', {timeZone: 'UTC'}) : 'No definido'}
+                  <Calendar size={14} className="text-yellow-400"/> 
+                  Inicio: {client.startDate ? new Date(client.startDate).toLocaleDateString('es-ES', {timeZone: 'UTC'}) : 'No definido'}
                 </div>
               </div>
 
@@ -194,7 +193,11 @@ export default function ClientsView({
                   <Edit size={16}/>
                 </button>
                 <button 
-                  onClick={() => handleDeleteDirect(client.id)}
+                  onClick={() => {
+                    if (typeof onDeleteClient === 'function') {
+                      onDeleteClient(client.id);
+                    }
+                  }}
                   className="p-2 bg-zinc-950 text-zinc-400 hover:text-red-500 rounded-xl border border-zinc-800 transition-colors"
                   title="Eliminar"
                 >
@@ -226,14 +229,19 @@ export default function ClientsView({
               <h2 className="text-xl font-black text-white uppercase italic tracking-tighter flex items-center gap-2">
                 {editingClient ? 'Editar Atleta' : 'Nuevo Atleta'}
               </h2>
-              <button onClick={() => setIsModalOpen(false)} className="text-zinc-500 hover:text-white bg-zinc-800 p-2 rounded-full transition-colors">
+              <button 
+                onClick={() => setIsModalOpen(false)} 
+                className="text-zinc-500 hover:text-white bg-zinc-800 p-2 rounded-full transition-colors"
+              >
                 <X size={20} />
               </button>
             </div>
             
             <form onSubmit={handleSubmit} className="p-6 space-y-5">
               <div>
-                <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2">Nombre del Atleta</label>
+                <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2">
+                  Nombre del Atleta
+                </label>
                 <input 
                   type="text" 
                   required 
@@ -245,7 +253,9 @@ export default function ClientsView({
               </div>
 
               <div>
-                <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2">Correo Electrónico (Para vincular app)</label>
+                <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2">
+                  Correo Electrónico (Para vincular app)
+                </label>
                 <input 
                   type="email" 
                   placeholder="ejemplo@correo.com"
@@ -256,7 +266,9 @@ export default function ClientsView({
               </div>
 
               <div>
-                <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2">Plan de Suscripción</label>
+                <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2">
+                  Plan de Suscripción
+                </label>
                 <select 
                   className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-white outline-none focus:border-yellow-400 transition-colors text-sm" 
                   value={formData.plan} 
@@ -269,7 +281,9 @@ export default function ClientsView({
               </div>
 
               <div>
-                <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2">Fecha Base de Cobro</label>
+                <label className="block text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-2">
+                  Fecha Base de Cobro
+                </label>
                 <input 
                   type="date" 
                   required
@@ -283,17 +297,15 @@ export default function ClientsView({
                 <button 
                   type="button" 
                   onClick={() => setIsModalOpen(false)} 
-                  disabled={isSubmitting}
-                  className="flex-1 py-4 text-zinc-400 font-bold uppercase text-xs rounded-xl bg-black border border-zinc-800 hover:bg-zinc-900 transition-colors disabled:opacity-50"
+                  className="flex-1 py-4 text-zinc-400 font-bold uppercase text-xs rounded-xl bg-black border border-zinc-800 hover:bg-zinc-900 transition-colors"
                 >
                   Cancelar
                 </button>
                 <button 
                   type="submit" 
-                  disabled={isSubmitting}
-                  className="flex-1 bg-yellow-400 hover:bg-yellow-300 text-black font-black py-4 rounded-xl uppercase text-xs tracking-widest transition-colors shadow-lg shadow-yellow-400/20 disabled:opacity-50"
+                  className="flex-1 bg-yellow-400 hover:bg-yellow-300 text-black font-black py-4 rounded-xl uppercase text-xs tracking-widest transition-colors shadow-lg shadow-yellow-400/20"
                 >
-                  {isSubmitting ? 'Guardando...' : (editingClient ? 'Guardar Cambios' : 'Crear Atleta')}
+                  {editingClient ? 'Guardar Cambios' : 'Crear Atleta'}
                 </button>
               </div>
             </form>
