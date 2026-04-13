@@ -28,7 +28,7 @@ export default function App() {
   const [studentData, setStudentData] = useState(null);
   const [loadingAuth, setLoadingAuth] = useState(true);
   
-  // Estado para evitar el parpadeo visual del Coach
+  // Estado para evitar el parpadeo visual del Coach al cargar datos
   const [loadingCoachData, setLoadingCoachData] = useState(true); 
 
   // Parámetro de invitación mágica por URL
@@ -81,7 +81,7 @@ export default function App() {
     // Escuchar Atletas
     const unsubClients = onSnapshot(collection(db, 'clients'), (snapshot) => {
       setClients(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-      setLoadingCoachData(false);
+      setLoadingCoachData(false); // Apagamos el spinner cuando los atletas ya cargaron
     });
 
     // Escuchar Plantillas de Rutinas
@@ -127,19 +127,21 @@ export default function App() {
 
 
   // ==========================================
-  // --- FUNCIONES CRUD GLOBALES ---
+  // --- FUNCIONES CRUD GLOBALES BLINDADAS ---
   // ==========================================
 
   // --- CLIENTES ---
   const handleAddClient = async (clientData) => {
     try {
-      await addDoc(collection(db, 'clients'), {
+      const clientsRef = collection(db, 'clients');
+      const newDocRef = doc(clientsRef); // Genera una ID vacía de forma segura antes de guardar
+      await setDoc(newDocRef, {
         ...clientData,
         createdAt: new Date(),
         active: true
       });
     } catch (error) { 
-      console.error("Error agregando cliente: ", error); 
+      console.error("Error crítico agregando cliente: ", error); 
     }
   };
 
@@ -267,8 +269,8 @@ export default function App() {
         {currentView === 'clients' && (
           <ClientsView 
             clients={clients} 
-            settings={settings}
-            routines={routines}
+            settings={settings} // Pasamos la configuración para leer los planes
+            routines={routines} // Pasamos las rutinas por precaución
             navigateTo={navigateTo} 
             onAddClient={handleAddClient} 
             onUpdateClient={handleUpdateClient} 
