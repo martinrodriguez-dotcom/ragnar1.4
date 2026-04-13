@@ -52,14 +52,18 @@ export default function App() {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
         setUser(currentUser);
-        const q = query(collection(db, 'clients'), where('studentUserId', '==', currentUser.uid));
-        const querySnapshot = await getDocs(q);
+        try {
+          const q = query(collection(db, 'clients'), where('studentUserId', '==', currentUser.uid));
+          const querySnapshot = await getDocs(q);
 
-        if (!querySnapshot.empty) {
-          setUserRole('student');
-          setStudentData({ id: querySnapshot.docs[0].id, ...querySnapshot.docs[0].data() });
-        } else {
-          setUserRole('coach');
+          if (!querySnapshot.empty) {
+            setUserRole('student');
+            setStudentData({ id: querySnapshot.docs[0].id, ...querySnapshot.docs[0].data() });
+          } else {
+            setUserRole('coach');
+          }
+        } catch (error) {
+          console.error("Error al verificar rol del usuario:", error);
         }
       } else {
         setUser(null);
@@ -100,6 +104,7 @@ export default function App() {
       where('sender', '==', 'student'), 
       where('read', '==', false)
     );
+    
     const unsubMessages = onSnapshot(qMessages, (snapshot) => {
       setUnreadMessagesCount(snapshot.docs.length);
     });
@@ -133,7 +138,7 @@ export default function App() {
         active: true
       });
     } catch (error) { 
-      console.error("Error agregando cliente: ", error); 
+      console.error("Error agregando cliente:", error); 
     }
   };
 
@@ -142,12 +147,12 @@ export default function App() {
       const { id, ...data } = updatedClient;
       await updateDoc(doc(db, 'clients', id), data);
     } catch (error) { 
-      console.error("Error actualizando cliente: ", error); 
+      console.error("Error actualizando cliente:", error); 
     }
   };
 
   const handleDeleteClient = async (clientId) => {
-    if (!window.confirm('¿Estás seguro de eliminar este atleta? Perderá el acceso y se borrarán sus datos.')) return;
+    if (!window.confirm('¿Estás seguro de eliminar este atleta y todos sus datos?')) return;
     try {
       await deleteDoc(doc(db, 'clients', clientId));
       if (selectedClient && selectedClient.id === clientId) {
@@ -155,7 +160,7 @@ export default function App() {
         setSelectedClient(null);
       }
     } catch (error) { 
-      console.error("Error eliminando cliente: ", error); 
+      console.error("Error eliminando cliente:", error); 
     }
   };
 
@@ -164,7 +169,7 @@ export default function App() {
     try { 
       await addDoc(collection(db, 'exercises'), exerciseData); 
     } catch (error) { 
-      console.error("Error agregando ejercicio: ", error); 
+      console.error("Error agregando ejercicio:", error); 
     }
   };
 
@@ -173,7 +178,7 @@ export default function App() {
       const { id, ...data } = updatedExercise;
       await updateDoc(doc(db, 'exercises', id), data);
     } catch (error) { 
-      console.error("Error actualizando ejercicio: ", error); 
+      console.error("Error actualizando ejercicio:", error); 
     }
   };
 
@@ -182,7 +187,7 @@ export default function App() {
     try { 
       await deleteDoc(doc(db, 'exercises', exerciseId)); 
     } catch (error) { 
-      console.error("Error eliminando ejercicio: ", error); 
+      console.error("Error eliminando ejercicio:", error); 
     }
   };
 
@@ -191,7 +196,7 @@ export default function App() {
     try { 
       await addDoc(collection(db, 'routines'), routineData); 
     } catch (error) { 
-      console.error("Error agregando rutina: ", error); 
+      console.error("Error agregando rutina:", error); 
     }
   };
 
@@ -200,7 +205,7 @@ export default function App() {
       const { id, ...data } = updatedRoutine;
       await updateDoc(doc(db, 'routines', id), data);
     } catch (error) { 
-      console.error("Error actualizando rutina: ", error); 
+      console.error("Error actualizando rutina:", error); 
     }
   };
 
@@ -209,7 +214,7 @@ export default function App() {
     try { 
       await deleteDoc(doc(db, 'routines', routineId)); 
     } catch (error) { 
-      console.error("Error eliminando rutina: ", error); 
+      console.error("Error eliminando rutina:", error); 
     }
   };
 
@@ -218,7 +223,7 @@ export default function App() {
     try { 
       await setDoc(doc(db, 'settings', 'general'), newSettings, { merge: true }); 
     } catch (error) { 
-      console.error("Error actualizando configuración: ", error); 
+      console.error("Error actualizando configuración:", error); 
     }
   };
 
@@ -244,7 +249,12 @@ export default function App() {
   }
 
   if (inviteId && userRole !== 'student') {
-    return <StudentRegistration inviteId={inviteId} onRegisterSuccess={() => window.location.href = '/'} />;
+    return (
+      <StudentRegistration 
+        inviteId={inviteId} 
+        onRegisterSuccess={() => window.location.href = '/'} 
+      />
+    );
   }
 
   if (!user) {
