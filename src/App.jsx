@@ -27,11 +27,9 @@ export default function App() {
   const [userRole, setUserRole] = useState(null); 
   const [studentData, setStudentData] = useState(null);
   const [loadingAuth, setLoadingAuth] = useState(true);
-  
-  // Estado para evitar el parpadeo visual del Coach al cargar datos
   const [loadingCoachData, setLoadingCoachData] = useState(true); 
 
-  // Parámetro de invitación mágica por URL
+  // Parámetro de invitación por URL
   const queryParams = new URLSearchParams(window.location.search);
   const inviteId = queryParams.get('invite');
 
@@ -92,7 +90,9 @@ export default function App() {
     });
 
     const unsubSettings = onSnapshot(doc(db, 'settings', 'general'), (docSnap) => {
-      if (docSnap.exists()) setSettings(docSnap.data());
+      if (docSnap.exists()) {
+        setSettings(docSnap.data());
+      }
     });
 
     const qMessages = query(
@@ -124,63 +124,110 @@ export default function App() {
   // --- FUNCIONES CRUD GLOBALES ---
   // ==========================================
 
-  // (Nota: ClientsView ahora gestiona sus propias creaciones/borrados directos, 
-  // pero mantenemos la de Actualizar para ClientDetail y Payments)
+  // --- CLIENTES ---
+  const handleAddClient = async (clientData) => {
+    try {
+      await addDoc(collection(db, 'clients'), {
+        ...clientData,
+        createdAt: new Date(),
+        active: true
+      });
+    } catch (error) { 
+      console.error("Error agregando cliente: ", error); 
+    }
+  };
+
   const handleUpdateClient = async (updatedClient) => {
     try {
       const { id, ...data } = updatedClient;
       await updateDoc(doc(db, 'clients', id), data);
-    } catch (error) { console.error("Error actualizando cliente: ", error); }
+    } catch (error) { 
+      console.error("Error actualizando cliente: ", error); 
+    }
+  };
+
+  const handleDeleteClient = async (clientId) => {
+    if (!window.confirm('¿Estás seguro de eliminar este atleta? Perderá el acceso y se borrarán sus datos.')) return;
+    try {
+      await deleteDoc(doc(db, 'clients', clientId));
+      if (selectedClient && selectedClient.id === clientId) {
+        setCurrentView('clients');
+        setSelectedClient(null);
+      }
+    } catch (error) { 
+      console.error("Error eliminando cliente: ", error); 
+    }
   };
 
   // --- EJERCICIOS ---
   const handleAddExercise = async (exerciseData) => {
-    try { await addDoc(collection(db, 'exercises'), exerciseData); } 
-    catch (error) { console.error("Error agregando ejercicio: ", error); }
+    try { 
+      await addDoc(collection(db, 'exercises'), exerciseData); 
+    } catch (error) { 
+      console.error("Error agregando ejercicio: ", error); 
+    }
   };
 
   const handleUpdateExercise = async (updatedExercise) => {
     try {
       const { id, ...data } = updatedExercise;
       await updateDoc(doc(db, 'exercises', id), data);
-    } catch (error) { console.error("Error actualizando ejercicio: ", error); }
+    } catch (error) { 
+      console.error("Error actualizando ejercicio: ", error); 
+    }
   };
 
   const handleDeleteExercise = async (exerciseId) => {
     if (!window.confirm('¿Estás seguro de eliminar este ejercicio?')) return;
-    try { await deleteDoc(doc(db, 'exercises', exerciseId)); } 
-    catch (error) { console.error("Error eliminando ejercicio: ", error); }
+    try { 
+      await deleteDoc(doc(db, 'exercises', exerciseId)); 
+    } catch (error) { 
+      console.error("Error eliminando ejercicio: ", error); 
+    }
   };
 
   // --- RUTINAS ---
   const handleAddRoutine = async (routineData) => {
-    try { await addDoc(collection(db, 'routines'), routineData); } 
-    catch (error) { console.error("Error agregando rutina: ", error); }
+    try { 
+      await addDoc(collection(db, 'routines'), routineData); 
+    } catch (error) { 
+      console.error("Error agregando rutina: ", error); 
+    }
   };
 
   const handleUpdateRoutine = async (updatedRoutine) => {
     try {
       const { id, ...data } = updatedRoutine;
       await updateDoc(doc(db, 'routines', id), data);
-    } catch (error) { console.error("Error actualizando rutina: ", error); }
+    } catch (error) { 
+      console.error("Error actualizando rutina: ", error); 
+    }
   };
 
   const handleDeleteRoutine = async (routineId) => {
     if (!window.confirm('¿Estás seguro de eliminar esta rutina?')) return;
-    try { await deleteDoc(doc(db, 'routines', routineId)); } 
-    catch (error) { console.error("Error eliminando rutina: ", error); }
+    try { 
+      await deleteDoc(doc(db, 'routines', routineId)); 
+    } catch (error) { 
+      console.error("Error eliminando rutina: ", error); 
+    }
   };
 
   // --- CONFIGURACIÓN ---
   const handleUpdateSettings = async (newSettings) => {
-    try { await setDoc(doc(db, 'settings', 'general'), newSettings, { merge: true }); } 
-    catch (error) { console.error("Error actualizando configuración: ", error); }
+    try { 
+      await setDoc(doc(db, 'settings', 'general'), newSettings, { merge: true }); 
+    } catch (error) { 
+      console.error("Error actualizando configuración: ", error); 
+    }
   };
 
   // --- NAVEGACIÓN ---
   const navigateTo = (view, clientData = null) => {
     setCurrentView(view);
-    if (clientData) setSelectedClient(clientData);
+    if (clientData) {
+      setSelectedClient(clientData);
+    }
   };
 
   const unreadSystemCount = systemNotifications.filter(n => !n.read && !n.deleted).length;
@@ -232,9 +279,9 @@ export default function App() {
             settings={settings} 
             routines={routines} 
             navigateTo={navigateTo} 
-            // Ya no le pasamos onAddClient ni onDeleteClient porque ahora ClientsView lo hace directo.
-            // Le dejamos onUpdateClient por precaución de compatibilidad.
+            onAddClient={handleAddClient} 
             onUpdateClient={handleUpdateClient} 
+            onDeleteClient={handleDeleteClient} 
           />
         )}
         
