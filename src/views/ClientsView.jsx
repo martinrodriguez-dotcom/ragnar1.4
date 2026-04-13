@@ -1,24 +1,22 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Search, Plus, User, Trash2, Edit, Dumbbell, Calendar, Check, ChevronRight, Link, X } from 'lucide-react';
+// IMPORTACIONES DIRECTAS DE FIREBASE PARA BYPASSEAR EL ERROR
+import { collection, addDoc, doc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { db } from '../firebase'; 
 
 export default function ClientsView({ 
   clients = [], 
   settings = null, 
   routines = [], 
-  navigateTo = () => {}, 
-  onAddClient, 
-  onUpdateClient, 
-  onDeleteClient 
+  navigateTo = () => {} 
 }) {
-  // --- RASTREADOR DE VERSIÓN ---
-  useEffect(() => {
-    console.log("🚀 [CLIENTS_VIEW] VERSIÓN 3 CARGADA - El archivo se actualizó correctamente.");
-  }, []);
-
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingClient, setEditingClient] = useState(null);
   const [copiedId, setCopiedId] = useState(null);
+  
+  // Estado para bloquear el botón mientras guarda
+  const [isSubmitting, setIsSubmitting] = useState(false); 
 
   const [formData, setFormData] = useState({
     name: '',
@@ -62,37 +60,45 @@ export default function ClientsView({
     setIsModalOpen(true);
   };
 
+  // --- LÓGICA DE GUARDADO DIRECTO EN FIREBASE ---
   const handleSubmit = async (e) => {
     e.preventDefault();
-    console.log("🟢 [CLIENTS_VIEW] Botón Guardar presionado. Datos:", formData);
-    
     const safeName = formData.name || "";
-    if (!safeName.trim()) {
-      console.warn("🟡 [CLIENTS_VIEW] Nombre vacío, cancelando.");
-      return;
-    }
+    if (!safeName.trim()) return;
+
+    setIsSubmitting(true); // Bloqueamos el botón
 
     try {
       if (editingClient) {
-        console.log("🔵 [CLIENTS_VIEW] Intentando EDITAR alumno...");
-        if (typeof onUpdateClient === 'function') {
-          await onUpdateClient({ ...editingClient, ...formData });
-          console.log("✅ [CLIENTS_VIEW] Edición enviada con éxito a App.jsx");
-        } else {
-          console.error("❌ [CLIENTS_VIEW ERROR] La función onUpdateClient NO llegó desde App.jsx");
-        }
+        // ACTUALIZAR DIRECTO
+        console.log("Actualizando cliente en DB...");
+        const { id, ...dataToUpdate } = { ...editingClient, ...formData };
+        await updateDoc(doc(db, 'clients', id), dataToUpdate);
       } else {
-        console.log("🔵 [CLIENTS_VIEW] Intentando CREAR alumno...");
-        if (typeof onAddClient === 'function') {
-          await onAddClient(formData);
-          console.log("✅ [CLIENTS_VIEW] Creación enviada con éxito a App.jsx");
-        } else {
-          console.error("❌ [CLIENTS_VIEW ERROR] La función onAddClient NO llegó desde App.jsx");
-        }
+        // CREAR DIRECTO
+        console.log("Creando cliente en DB...");
+        await addDoc(collection(db, 'clients'), {
+          ...formData,
+          createdAt: new Date(),
+          active: true
+        });
       }
       setIsModalOpen(false);
     } catch (error) {
-      console.error("❌ [CLIENTS_VIEW CATCH ERROR] Falló al enviar datos:", error);
+      console.error("❌ Error de escritura en Firebase:", error);
+      alert("Hubo un error de conexión al guardar. Revisa tu internet o la consola.");
+    } finally {
+      setIsSubmitting(false); // Desbloqueamos el botón
+    }
+  };
+
+  // --- LÓGICA DE BORRADO DIRECTO EN FIREBASE ---
+  const handleDeleteDirect = async (clientId) => {
+    if (!window.confirm('¿Estás seguro de eliminar este atleta? Perderá el acceso y se borrarán sus datos.')) return;
+    try {
+      await deleteDoc(doc(db, 'clients', clientId));
+    } catch (error) {
+      console.error("❌ Error eliminando cliente:", error);
     }
   };
 
@@ -188,7 +194,7 @@ export default function ClientsView({
                   <Edit size={16}/>
                 </button>
                 <button 
-                  onClick={() => onDeleteClient(client.id)}
+                  onClick={() => handleDeleteDirect(client.id)}
                   className="p-2 bg-zinc-950 text-zinc-400 hover:text-red-500 rounded-xl border border-zinc-800 transition-colors"
                   title="Eliminar"
                 >
@@ -277,15 +283,17 @@ export default function ClientsView({
                 <button 
                   type="button" 
                   onClick={() => setIsModalOpen(false)} 
-                  className="flex-1 py-4 text-zinc-400 font-bold uppercase text-xs rounded-xl bg-black border border-zinc-800 hover:bg-zinc-900 transition-colors"
+                  disabled={isSubmitting}
+                  className="flex-1 py-4 text-zinc-400 font-bold uppercase text-xs rounded-xl bg-black border border-zinc-800 hover:bg-zinc-900 transition-colors disabled:opacity-50"
                 >
                   Cancelar
                 </button>
                 <button 
                   type="submit" 
-                  className="flex-1 bg-yellow-400 hover:bg-yellow-300 text-black font-black py-4 rounded-xl uppercase text-xs tracking-widest transition-colors shadow-lg shadow-yellow-400/20"
+                  disabled={isSubmitting}
+                  className="flex-1 bg-yellow-400 hover:bg-yellow-300 text-black font-black py-4 rounded-xl uppercase text-xs tracking-widest transition-colors shadow-lg shadow-yellow-400/20 disabled:opacity-50"
                 >
-                  {editingClient ? 'Guardar Cambios' : 'Crear Atleta'}
+                  {isSubmitting ? 'Guardando...' : (editingClient ? 'Guardar Cambios' : 'Crear Atleta')}
                 </button>
               </div>
             </form>
