@@ -19,8 +19,8 @@ import StudentView from './views/StudentView';
 import StudentRegistration from './views/StudentRegistration';
 import NotificationsView from './views/NotificationsView';
 import SettingsView from './views/SettingsView';
-import CommunityView from './views/CommunityView'; // Nueva página
-import PaymentsView from './views/PaymentsView'; // Nueva página
+import CommunityView from './views/CommunityView'; 
+import PaymentsView from './views/PaymentsView'; 
 
 export default function App() {
   // --- ESTADOS GLOBALES ---
@@ -39,8 +39,8 @@ export default function App() {
   const [selectedClient, setSelectedClient] = useState(null);
   const [clients, setClients] = useState([]);
   const [exercises, setExercises] = useState([]);
-  const [routines, setRoutines] = useState([]); // Agregado para rutinas
-  const [settings, setSettings] = useState(null); // Agregado para configuración/planes
+  const [routines, setRoutines] = useState([]); 
+  const [settings, setSettings] = useState(null); 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
 
@@ -174,7 +174,6 @@ export default function App() {
     }
   };
 
-  // --- FUNCIÓN RECUPERADA DE TU CÓDIGO ORIGINAL ---
   const updateClientRoutine = async (clientId, newEx) => {
     try {
       const clientRef = doc(db, 'clients', clientId);
@@ -207,7 +206,6 @@ export default function App() {
     }
   };
 
-  // --- FUNCIONES AGREGADAS PARA RUTINAS GLOBALES Y CONFIGURACIÓN ---
   const handleAddRoutine = async (data) => {
     try { await addDoc(collection(db, 'routines'), data); } catch (error) { console.error(error); }
   };
@@ -265,7 +263,7 @@ export default function App() {
   return (
     <div className="flex h-screen bg-black text-zinc-100 font-sans overflow-hidden">
       
-      {/* Sidebar para Escritorio */}
+      {/* Sidebar para Escritorio (Tu archivo Sidebar.jsx intacto) */}
       <div className="hidden md:block">
         <Sidebar 
           activeView={activeView} 
@@ -274,31 +272,38 @@ export default function App() {
         />
       </div>
       
-      {/* Menú Móvil Desplegable */}
+      {/* Menú Móvil Desplegable (AHORA CON SCROLL MEJORADO Y NOMBRES SINCRONIZADOS) */}
       {isMobileMenuOpen && (
         <div className="fixed inset-0 z-50 bg-black/95 md:hidden flex flex-col animate-in fade-in backdrop-blur-sm">
-          <div className="p-4 flex justify-between items-center border-b border-zinc-800">
+          
+          <div className="p-4 flex justify-between items-center border-b border-zinc-800 shrink-0">
             <h2 className="text-white font-bold text-xl uppercase tracking-tighter">Menú</h2>
             <button onClick={() => setIsMobileMenuOpen(false)} className="text-zinc-400 p-2"><X size={24} /></button>
           </div>
-          <div className="p-4 flex flex-col gap-2 overflow-y-auto">
-            <button onClick={() => navigateTo('dashboard')} className="p-4 text-left text-zinc-400 border-b border-zinc-900 flex items-center gap-3"><BarChart3 size={20}/> Panel Principal</button>
-            <button onClick={() => navigateTo('notifications')} className="p-4 text-left text-zinc-400 border-b border-zinc-900 flex justify-between items-center">
+          
+          <div className="p-4 flex flex-col gap-1 overflow-y-auto flex-1 custom-scrollbar">
+            <button onClick={() => navigateTo('dashboard')} className="p-4 text-left text-zinc-400 hover:text-white hover:bg-zinc-900 rounded-xl flex items-center gap-3 transition-colors"><BarChart3 size={20}/> Dashboard</button>
+            <button onClick={() => navigateTo('notifications')} className="p-4 text-left text-zinc-400 hover:text-white hover:bg-zinc-900 rounded-xl flex justify-between items-center transition-colors">
                <span className="flex items-center gap-3"><Bell size={20}/> Notificaciones</span>
                {unreadCount > 0 && <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">{unreadCount}</span>}
             </button>
-            <button onClick={() => navigateTo('clients')} className="p-4 text-left text-zinc-400 border-b border-zinc-900 flex items-center gap-3"><Users size={20}/> Clientes</button>
-            <button onClick={() => navigateTo('exercises')} className="p-4 text-left text-zinc-400 border-b border-zinc-900 flex items-center gap-3"><List size={20}/> Ejercicios</button>
-            <button onClick={() => navigateTo('routines')} className="p-4 text-left text-zinc-400 border-b border-zinc-900 flex items-center gap-3"><Layout size={20}/> Rutinas</button>
-            <button onClick={() => navigateTo('calendar')} className="p-4 text-left text-zinc-400 border-b border-zinc-900 flex items-center gap-3"><Calendar size={20}/> Agenda</button>
-            
-            {/* NUEVAS VISTAS EN EL MENÚ MÓVIL */}
-            <button onClick={() => navigateTo('community')} className="p-4 text-left text-zinc-400 border-b border-zinc-900 flex items-center gap-3"><MessageSquare size={20}/> Salón Ragnar</button>
-            <button onClick={() => navigateTo('payments')} className="p-4 text-left text-zinc-400 border-b border-zinc-900 flex items-center gap-3"><CreditCard size={20}/> Cobros</button>
-            
-            <button onClick={() => navigateTo('settings')} className="p-4 text-left text-zinc-400 border-b border-zinc-900 flex items-center gap-3"><Settings size={20}/> Configuración</button>
-            <button onClick={handleLogout} className="p-4 text-left text-red-500 font-bold flex items-center gap-3 mt-4"><LogOut size={20} /> Cerrar Sesión</button>
+            <button onClick={() => navigateTo('clients')} className="p-4 text-left text-zinc-400 hover:text-white hover:bg-zinc-900 rounded-xl flex items-center gap-3 transition-colors"><Users size={20}/> Mis Atletas</button>
+            <button onClick={() => navigateTo('exercises')} className="p-4 text-left text-zinc-400 hover:text-white hover:bg-zinc-900 rounded-xl flex items-center gap-3 transition-colors"><List size={20}/> Ejercicios</button>
+            <button onClick={() => navigateTo('routines')} className="p-4 text-left text-zinc-400 hover:text-white hover:bg-zinc-900 rounded-xl flex items-center gap-3 transition-colors"><Layout size={20}/> Rutinas</button>
+            <button onClick={() => navigateTo('calendar')} className="p-4 text-left text-zinc-400 hover:text-white hover:bg-zinc-900 rounded-xl flex items-center gap-3 transition-colors"><Calendar size={20}/> Agenda</button>
+            <button onClick={() => navigateTo('community')} className="p-4 text-left text-zinc-400 hover:text-white hover:bg-zinc-900 rounded-xl flex items-center gap-3 transition-colors"><MessageSquare size={20}/> Comunidad</button>
+            <button onClick={() => navigateTo('payments')} className="p-4 text-left text-zinc-400 hover:text-white hover:bg-zinc-900 rounded-xl flex items-center gap-3 transition-colors"><CreditCard size={20}/> Pagos</button>
+            <button onClick={() => navigateTo('settings')} className="p-4 text-left text-zinc-400 hover:text-white hover:bg-zinc-900 rounded-xl flex items-center gap-3 transition-colors"><Settings size={20}/> Configuración</button>
+
+            {/* BOTÓN CERRAR SESIÓN EMPUJADO AL FONDO */}
+            <div className="mt-auto pt-6 pb-4 shrink-0">
+              <div className="h-px bg-zinc-800 mb-4"></div>
+              <button onClick={handleLogout} className="w-full p-4 text-left text-red-500 hover:bg-red-500/10 rounded-xl font-bold flex items-center gap-3 transition-colors">
+                <LogOut size={20} /> Cerrar Sesión
+              </button>
+            </div>
           </div>
+
         </div>
       )}
 
@@ -378,7 +383,6 @@ export default function App() {
             <CalendarView clients={clients} />
           )}
 
-          {/* LAS NUEVAS VISTAS INTEGRADAS AL RENDERING */}
           {activeView === 'settings' && (
             <SettingsView settings={settings} onUpdateSettings={handleUpdateSettings} />
           )}
