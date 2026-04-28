@@ -34,25 +34,25 @@ export default function PaymentsView({ clients, settings }) {
   const [historyData, setHistoryData] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
 
-  // --- LÓGICA DE CÁLCULO DE CICLOS Y DEUDA ---
+  // --- LÓGICA DE CÁLCULO DE CICLOS, DEUDA Y ADELANTOS ---
   const calculateClientDebt = async (client) => {
     if (!client.startDate) {
       return null;
     }
 
     const today = new Date();
-    const startParts = client.startDate.split('-'); // YYYY-MM-DD
+    const startParts = client.startDate.split('-'); // Formato: YYYY-MM-DD
     const startYear = parseInt(startParts[0]);
     const startMonth = parseInt(startParts[1]);
     const startDay = parseInt(startParts[2]);
 
-    // Generar lista de todos los periodos desde el alta hasta el mes actual
+    // Array para almacenar todos los ciclos que el atleta DEBIÓ pagar hasta hoy
     const cycles = [];
     
     // Determinamos cuál es el mes límite a evaluar
     const limitDate = new Date();
     if (today.getDate() < startDay) {
-        // Si hoy es antes del día de cobro, el ciclo actual es el del mes anterior
+        // Si hoy es antes de su día de cobro, el ciclo actual facturable es el del mes anterior
         limitDate.setMonth(limitDate.getMonth() - 1);
     }
 
@@ -68,7 +68,7 @@ export default function PaymentsView({ clients, settings }) {
       tempDate.setMonth(tempDate.getMonth() + 1);
     }
 
-    // Buscamos los pagos realizados en Firebase para este cliente
+    // Buscamos los pagos ya realizados en Firebase para este cliente
     const paymentsRef = collection(db, 'clients', client.id, 'payments');
     const paymentsSnap = await getDocs(paymentsRef);
     
@@ -77,20 +77,31 @@ export default function PaymentsView({ clients, settings }) {
       .filter((d) => d.data().status === 'paid')
       .map((d) => d.id);
 
-    // Identificamos periodos pendientes comparando todos los ciclos vs los pagados
+    // Identificamos periodos pendientes (los que están en 'cycles' pero no en 'paidPeriods')
     const pendingCycles = cycles.filter((c) => !paidPeriods.includes(c));
 
-    // Obtenemos el costo del plan asignado buscando en settings
+    // --- ENLACE CON EL COSTO DEL PLAN ---
     let planCost = 0;
     if (settings && settings.plans) {
+      // Busca el plan exacto por nombre
       const assignedPlan = settings.plans.find((p) => p.name === client.plan);
       if (assignedPlan) {
         planCost = parseFloat(assignedPlan.price);
       }
     }
 
+    // --- CÁLCULO DEL PRÓXIMO MES ADELANTADO ---
+    // Si no debe nada, calculamos cuál es el próximo ciclo futuro disponible para pagar
+    // 'tempDate' quedó posicionado un mes en el futuro después del while loop anterior.
+    while (paidPeriods.includes(`${tempDate.getFullYear()}-${String(tempDate.getMonth() + 1).padStart(2, '0')}`)) {
+      // Si por alguna razón ya había pagado adelantado, seguimos buscando el siguiente mes libre
+      tempDate.setMonth(tempDate.getMonth() + 1);
+    }
+    const advanceCycleId = `${tempDate.getFullYear()}-${String(tempDate.getMonth() + 1).padStart(2, '0')}`;
+
     return {
       pendingCycles: pendingCycles,
+      advanceCycle: advanceCycleId,
       planCost: planCost,
       startDay: startDay,
       totalDebt: pendingCycles.length * planCost,
@@ -126,15 +137,25 @@ export default function PaymentsView({ clients, settings }) {
     }
   }, [clients, settings]);
 
+  // --- FORMATEADOR DE PERIODOS (Ej: "2026-04" -> "Abril 2026") ---
+  const formatPeriodName = (periodId) => {
+    if (!periodId) return '';
+    const [year, month] = periodId.split('-');
+    const date = new Date(year, parseInt(month) - 1);
+    return date.toLocaleString('es-ES', { month: 'long', year: 'numeric' });
+  };
+
   // --- FUNCIÓN PARA MARCAR UN MES COMO PAGADO ---
-  const handleMarkAsPaid = async (client, periodId) => {
+  const handleMarkAsPaid = async (client, periodId, isAdvance = false) => {
     const debtInfo = allDebts[client.id];
     
     if (!debtInfo) {
       return;
     }
 
-    const confirmMessage = `¿Registrar pago de ${periodId} por $${debtInfo.planCost}?`;
+    const typeMsg = isAdvance ? 'por ADELANTADO' : 'pendiente';
+    const confirmMessage = `¿Registrar pago ${typeMsg} de ${formatPeriodName(periodId)} por $${debtInfo.planCost}?`;
+    
     if (!window.confirm(confirmMessage)) {
       return;
     }
@@ -145,20 +166,38 @@ export default function PaymentsView({ clients, settings }) {
         amount: debtInfo.planCost,
         planName: client.plan || 'Sin Plan',
         paidAt: new Date(),
-        clientName: client.name // Guardamos el nombre para facilitar lectura después
+        clientName: client.name // Para listarlo fácilmente en el panel de ingresos
       });
       
-      // Actualizar estado local para que desaparezca el botón
+      // Actualizar estado local
       setAllDebts((prev) => {
         const currentClientInfo = prev[client.id];
-        return {
-          ...prev,
-          [client.id]: {
-            ...currentClientInfo,
-            pendingCycles: currentClientInfo.pendingCycles.filter((c) => c !== periodId),
-            isUpToDate: (currentClientInfo.pendingCycles.length - 1) === 0
-          }
-        };
+        
+        if (isAdvance) {
+          // Si pagó adelantado, recalculamos el próximo mes adelantado disponible sumando 1 mes
+          const [year, month] = periodId.split('-');
+          const nextAdvanceDate = new Date(parseInt(year), parseInt(month), 1); // Mes siguiente
+          const nextAdvanceId = `${nextAdvanceDate.getFullYear()}-${String(nextAdvanceDate.getMonth() + 1).padStart(2, '0')}`;
+          
+          return {
+            ...prev,
+            [client.id]: {
+              ...currentClientInfo,
+              advanceCycle: nextAdvanceId
+            }
+          };
+        } else {
+          // Si pagó deuda, lo quitamos de la lista de pendientes
+          const newPending = currentClientInfo.pendingCycles.filter((c) => c !== periodId);
+          return {
+            ...prev,
+            [client.id]: {
+              ...currentClientInfo,
+              pendingCycles: newPending,
+              isUpToDate: newPending.length === 0
+            }
+          };
+        }
       });
 
     } catch (error) { 
@@ -240,13 +279,13 @@ export default function PaymentsView({ clients, settings }) {
             const info = allDebts[client.id];
             
             if (!info) {
-              return null; // Si no tiene info, probablemente no tiene startDate
+              return null; // Si no tiene info, es porque no tiene startDate configurado
             }
 
             return (
               <div 
                 key={client.id} 
-                className={`bg-zinc-900 border rounded-[2rem] p-6 transition-all shadow-xl flex flex-col h-full ${!info.isUpToDate ? 'border-red-500/30 shadow-[0_0_15px_rgba(239,68,68,0.05)]' : 'border-zinc-800'}`}
+                className={`bg-zinc-900 border rounded-[2rem] p-6 transition-all shadow-xl flex flex-col h-full ${!info.isUpToDate ? 'border-red-500/30 shadow-[0_0_15px_rgba(239,68,68,0.05)]' : 'border-zinc-800 hover:border-zinc-700'}`}
               >
                 
                 {/* Cabecera de la Tarjeta */}
@@ -265,37 +304,69 @@ export default function PaymentsView({ clients, settings }) {
                     </div>
                   </div>
                   
-                  <span className={`px-2 py-1 rounded-lg text-[8px] font-black uppercase tracking-widest border shrink-0 ${info.isUpToDate ? 'bg-green-500/10 text-green-500 border-green-500/20' : 'bg-red-500/10 text-red-500 border-red-500/20'}`}>
+                  <span className={`px-2 py-1 rounded-lg text-[8px] font-black uppercase tracking-widest border shrink-0 ${info.isUpToDate ? 'bg-green-500/10 text-green-500 border-green-500/20' : 'bg-red-500/10 text-red-500 border-red-500/20 animate-pulse'}`}>
                     {info.isUpToDate ? 'Al Día' : 'Con Deuda'}
                   </span>
                 </div>
 
-                {/* Lista de Meses Pendientes */}
-                <div className="bg-black/40 rounded-2xl p-4 mb-4 border border-zinc-800/50 flex-1">
-                   <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest mb-3">
-                     Meses Pendientes:
-                   </p>
+                {/* Alerta de Plan sin Precio */}
+                {info.planCost === 0 && (
+                  <div className="bg-orange-500/10 border border-orange-500/20 rounded-xl p-2 mb-3">
+                    <p className="text-orange-400 text-[9px] font-black uppercase text-center tracking-widest">
+                      ⚠️ El plan asignado vale $0
+                    </p>
+                  </div>
+                )}
+
+                {/* Cuerpo de la Tarjeta: Pendientes o Pago Adelantado */}
+                <div className="bg-black/40 rounded-2xl p-4 mb-4 border border-zinc-800/50 flex-1 flex flex-col">
                    
-                   {info.pendingCycles.length > 0 ? (
-                     <div className="space-y-2">
-                       {info.pendingCycles.map((cycle) => (
-                         <div key={cycle} className="flex justify-between items-center bg-zinc-900/50 p-2 rounded-xl border border-zinc-800">
-                            <span className="text-white font-bold text-xs uppercase">
-                              {cycle}
-                            </span>
-                            <button 
-                              onClick={() => handleMarkAsPaid(client, cycle)} 
-                              className="bg-yellow-400 text-black px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest hover:bg-white transition-colors"
-                            >
-                              Cobrar ${info.planCost}
-                            </button>
-                         </div>
-                       ))}
-                     </div>
+                   {!info.isUpToDate ? (
+                     <>
+                       <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest mb-3">
+                         Meses Pendientes:
+                       </p>
+                       <div className="space-y-2">
+                         {info.pendingCycles.map((cycle) => (
+                           <div key={cycle} className="flex justify-between items-center bg-zinc-900/50 p-2 pl-3 rounded-xl border border-zinc-800">
+                              <span className="text-white font-bold text-xs uppercase capitalize-first">
+                                {formatPeriodName(cycle)}
+                              </span>
+                              <button 
+                                onClick={() => handleMarkAsPaid(client, cycle, false)} 
+                                className="bg-yellow-400 text-black px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest hover:bg-yellow-300 transition-colors shadow-md"
+                              >
+                                Cobrar {info.planCost > 0 ? `$${info.planCost}` : ''}
+                              </button>
+                           </div>
+                         ))}
+                       </div>
+                     </>
                    ) : (
-                     <p className="text-green-500 text-xs font-bold uppercase text-center mt-4">
-                       Sin deudas pendientes
-                     </p>
+                     <div className="flex flex-col h-full justify-center">
+                       <div className="text-center mb-4 mt-2">
+                         <CheckCircle size={24} className="mx-auto text-green-500 mb-2"/>
+                         <p className="text-green-500 text-xs font-bold uppercase tracking-widest">
+                           Sin deudas
+                         </p>
+                       </div>
+                       
+                       {/* SECCIÓN PAGO ADELANTADO */}
+                       <div className="bg-yellow-400/5 border border-yellow-400/20 rounded-xl p-3 flex justify-between items-center mt-auto">
+                          <div>
+                            <p className="text-[9px] text-yellow-400/70 font-black uppercase tracking-widest mb-0.5">Adelantar Mes</p>
+                            <span className="text-yellow-400 font-bold text-xs uppercase capitalize-first">
+                              {formatPeriodName(info.advanceCycle)}
+                            </span>
+                          </div>
+                          <button 
+                            onClick={() => handleMarkAsPaid(client, info.advanceCycle, true)} 
+                            className="bg-yellow-400 text-black px-3 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest hover:bg-yellow-300 transition-colors shadow-lg shadow-yellow-400/20"
+                          >
+                            Cobrar {info.planCost > 0 ? `$${info.planCost}` : ''}
+                          </button>
+                       </div>
+                     </div>
                    )}
                 </div>
 
@@ -305,12 +376,22 @@ export default function PaymentsView({ clients, settings }) {
                     onClick={() => handleOpenHistory(client)} 
                     className="flex-1 py-3 bg-zinc-800 text-zinc-400 hover:text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-colors flex items-center justify-center gap-2"
                   >
-                    <History size={14}/> Historial
+                    <History size={14}/> Historial General
                   </button>
                 </div>
+
               </div>
             );
           })}
+          
+          {filteredClients.length === 0 && (
+             <div className="col-span-full py-20 text-center bg-zinc-900/30 border border-dashed border-zinc-800 rounded-3xl">
+               <CreditCard size={48} className="mx-auto mb-4 text-zinc-600 opacity-50"/>
+               <p className="text-zinc-500 font-bold uppercase tracking-widest text-sm">
+                 No hay atletas para mostrar
+               </p>
+             </div>
+          )}
         </div>
       )}
 
@@ -344,7 +425,6 @@ export default function PaymentsView({ clients, settings }) {
               ) : historyData.length > 0 ? (
                 historyData.map((record) => {
                   
-                  // Formateador seguro de fecha
                   let dateString = "Sin fecha";
                   if (record.paidAt?.toDate) {
                     dateString = record.paidAt.toDate().toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -358,8 +438,8 @@ export default function PaymentsView({ clients, settings }) {
                       className="p-4 rounded-2xl border bg-black/40 border-zinc-800 flex justify-between items-center"
                     >
                       <div>
-                        <p className="text-white font-black text-sm uppercase">
-                          {record.id}
+                        <p className="text-white font-black text-sm uppercase capitalize-first">
+                          {formatPeriodName(record.id)}
                         </p>
                         <p className="text-zinc-500 text-[9px] font-bold uppercase tracking-widest mt-1">
                           Pagado el: {dateString}
