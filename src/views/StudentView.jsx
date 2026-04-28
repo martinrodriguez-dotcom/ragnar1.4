@@ -144,9 +144,8 @@ export default function StudentView({ clientId }) {
   };
 
   const currentDateId = formatDateId(date);
-  const currentMonthId = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
 
-  // --- EFECTO 1: CARGA DE DATOS Y LÓGICA DE DÍAS DE GRACIA ---
+  // --- EFECTO 1: CARGA DE DATOS Y LÓGICA DE DÍAS DE GRACIA (SINC RONIZADA CON COACH) ---
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -173,28 +172,50 @@ export default function StudentView({ clientId }) {
           setTrainerSettings(settingsSnap.data());
         }
 
-        const paymentRef = doc(db, 'clients', clientId, 'payments', currentMonthId);
-        const paymentSnap = await getDoc(paymentRef);
-        let isPaid = paymentSnap.exists() && paymentSnap.data().status === 'paid';
-
-        if (!isPaid && clientData?.startDate) {
+        // LÓGICA DE GUILLOTINA MATEMÁTICAMENTE EXACTA AL COACH
+        if (clientData?.startDate) {
           const today = new Date();
           const startDay = new Date(clientData.startDate + 'T12:00:00Z').getUTCDate(); 
-          const grace = parseInt(clientData.graceDays || 0);
-          
-          const deadline = new Date(today.getFullYear(), today.getMonth(), startDay);
-          deadline.setDate(deadline.getDate() + grace); 
+          let cycleYear = today.getFullYear();
+          let cycleMonth = today.getMonth() + 1;
 
-          if (today <= deadline) {
-            isPaid = true;
+          // Si hoy es antes de su día de pago, evaluamos el ciclo del mes anterior
+          if (today.getDate() < startDay) {
+            cycleMonth -= 1;
+            if (cycleMonth === 0) {
+              cycleMonth = 12;
+              cycleYear -= 1;
+            }
           }
-        }
 
-        setHasPaidMonth(isPaid);
+          const periodId = `${cycleYear}-${String(cycleMonth).padStart(2, '0')}`;
+          
+          const paymentRef = doc(db, 'clients', clientId, 'payments', periodId);
+          const paymentSnap = await getDoc(paymentRef);
+          let isPaid = paymentSnap.exists() && paymentSnap.data().status === 'paid';
 
-        if (!isPaid) {
-          setCurrentView('profile');
-          setShowPaymentModal(true);
+          if (!isPaid) {
+            // Fecha límite: Día de cobro de ESTE ciclo + días de gracia
+            const deadline = new Date(cycleYear, cycleMonth - 1, startDay);
+            const grace = parseInt(clientData.graceDays || 0);
+            deadline.setDate(deadline.getDate() + grace); 
+            deadline.setHours(23, 59, 59, 999);
+
+            // Si todavía NO se pasó la fecha límite, lo dejamos pasar (en gracia)
+            if (today <= deadline) {
+              isPaid = true;
+            }
+          }
+
+          setHasPaidMonth(isPaid);
+
+          if (!isPaid) {
+            setCurrentView('profile');
+            setShowPaymentModal(true);
+          }
+        } else {
+          // Si no tiene fecha configurada, no lo bloqueamos
+          setHasPaidMonth(true);
         }
 
       } catch (e) { 
@@ -207,7 +228,7 @@ export default function StudentView({ clientId }) {
     if (clientId) {
       fetchData();
     }
-  }, [clientId, currentMonthId]);
+  }, [clientId]);
 
   // --- EFECTO 2: CONTROL DE SESIONES PENDIENTES ---
   useEffect(() => {
