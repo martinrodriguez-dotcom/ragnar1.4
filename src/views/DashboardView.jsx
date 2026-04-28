@@ -9,13 +9,10 @@ import {
   X, 
   CheckCircle, 
   Clock, 
-  Plus, 
   Calendar as CalendarIcon
 } from 'lucide-react';
 import { 
-  collectionGroup, 
-  query, 
-  where, 
+  collection, 
   getDocs 
 } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -38,39 +35,43 @@ export default function DashboardView({ clients, settings, navigateTo }) {
       let details = [];
       
       const now = new Date();
-      // Definir rango exacto del mes calendario actual (del 1 al último día)
-      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-      const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+      const currentMonth = now.getMonth();
+      const currentYear = now.getFullYear();
 
       try {
-        // Buscamos en TODAS las subcolecciones 'payments' de Firebase
-        // aquellos documentos donde el campo 'paidAt' haya ocurrido en este mes
-        const paymentsQuery = query(
-          collectionGroup(db, 'payments'),
-          where('paidAt', '>=', startOfMonth),
-          where('paidAt', '<=', endOfMonth)
-        );
-
-        const snap = await getDocs(paymentsQuery);
-        
-        snap.forEach((docSnap) => {
-          const data = docSnap.data();
+        // En lugar de collectionGroup, iteramos por cada cliente (Es 100% seguro y no requiere índices)
+        for (const client of clients) {
           
-          if (data.status === 'paid') {
-            const amount = parseFloat(data.amount || 0);
-            total += amount;
+          const paymentsRef = collection(db, 'clients', client.id, 'payments');
+          const snap = await getDocs(paymentsRef);
+          
+          snap.forEach((docSnap) => {
+            const data = docSnap.data();
             
-            details.push({
-              id: docSnap.id,
-              period: docSnap.id, // El ID del documento es el periodo YYYY-MM
-              amount: amount,
-              paidAt: data.paidAt.toDate(),
-              clientName: data.clientName || "Atleta" // Dato guardado en el handleMarkAsPaid
-            });
-          }
-        });
+            // Si el estado es pagado y tiene fecha de pago
+            if (data.status === 'paid' && data.paidAt) {
+              
+              // Convertimos la fecha de Firebase a una fecha de JavaScript manejable
+              const paidDate = data.paidAt.toDate ? data.paidAt.toDate() : new Date(data.paidAt);
+              
+              // Si el mes y el año del pago coinciden con el mes y año actual
+              if (paidDate.getMonth() === currentMonth && paidDate.getFullYear() === currentYear) {
+                const amount = parseFloat(data.amount || 0);
+                total += amount;
+                
+                details.push({
+                  id: docSnap.id,
+                  period: docSnap.id, // El ID del documento es el periodo YYYY-MM
+                  amount: amount,
+                  paidAt: paidDate,
+                  clientName: data.clientName || client.name // Trae el nombre guardado o el actual
+                });
+              }
+            }
+          });
+        }
 
-        // Ordenar del más reciente al más antiguo
+        // Ordenar del pago más reciente al más antiguo
         details.sort((a, b) => b.paidAt - a.paidAt);
 
         setMonthlyIncome(total);
@@ -83,7 +84,9 @@ export default function DashboardView({ clients, settings, navigateTo }) {
       }
     };
 
-    fetchRealIncome();
+    if (clients) {
+      fetchRealIncome();
+    }
   }, [clients]);
 
   // --- FORMATEADOR DE MONEDA ---
@@ -243,30 +246,39 @@ export default function DashboardView({ clients, settings, navigateTo }) {
             
             <div className="p-6 overflow-y-auto custom-scrollbar flex-1 space-y-3">
               {paidClientsDetail.length > 0 ? (
-                paidClientsDetail.map((pay, i) => (
-                  <div 
-                    key={i} 
-                    className="p-4 bg-black/40 rounded-2xl flex justify-between items-center border border-zinc-800 hover:border-zinc-700 transition-colors"
-                  >
-                    <div className="flex items-center gap-3">
-                       <div className="p-2 bg-green-500/10 text-green-500 rounded-xl shrink-0">
-                         <CheckCircle size={16}/>
-                       </div>
-                       <div>
-                         <p className="text-white font-black uppercase text-sm leading-none truncate max-w-[140px]">
-                           {pay.clientName}
-                         </p>
-                         <p className="text-zinc-500 text-[9px] font-bold uppercase tracking-widest mt-1.5">
-                           Periodo: {pay.period} | {pay.paidAt.toLocaleDateString('es-ES', { day: '2-digit', month: 'short' })}
-                         </p>
-                       </div>
+                paidClientsDetail.map((pay, i) => {
+                  
+                  // Formateador robusto para la vista de detalle
+                  const dateString = pay.paidAt.toLocaleDateString('es-ES', { 
+                    day: '2-digit', 
+                    month: 'short' 
+                  });
+
+                  return (
+                    <div 
+                      key={i} 
+                      className="p-4 bg-black/40 rounded-2xl flex justify-between items-center border border-zinc-800 hover:border-zinc-700 transition-colors"
+                    >
+                      <div className="flex items-center gap-3">
+                         <div className="p-2 bg-green-500/10 text-green-500 rounded-xl shrink-0">
+                           <CheckCircle size={16}/>
+                         </div>
+                         <div>
+                           <p className="text-white font-black uppercase text-sm leading-none truncate max-w-[140px]">
+                             {pay.clientName}
+                           </p>
+                           <p className="text-zinc-500 text-[9px] font-bold uppercase tracking-widest mt-1.5">
+                             Periodo: {pay.period} | {dateString}
+                           </p>
+                         </div>
+                      </div>
+                      
+                      <span className="text-green-400 font-black text-sm shrink-0">
+                        {pay.amount > 0 ? formatMoney(pay.amount) : 'Sin Precio'}
+                      </span>
                     </div>
-                    
-                    <span className="text-green-400 font-black text-sm shrink-0">
-                      {pay.amount > 0 ? formatMoney(pay.amount) : 'Sin Precio'}
-                    </span>
-                  </div>
-                ))
+                  );
+                })
               ) : (
                 <div className="text-center py-12 border border-dashed border-zinc-800 rounded-2xl bg-black/30">
                   <DollarSign size={32} className="mx-auto text-zinc-700 mb-3"/>
