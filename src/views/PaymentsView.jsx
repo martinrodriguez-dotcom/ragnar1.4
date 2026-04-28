@@ -10,7 +10,8 @@ import {
   RefreshCcw, 
   History, 
   X, 
-  CalendarDays 
+  CalendarDays,
+  BarChart3
 } from 'lucide-react';
 import { 
   collection, 
@@ -28,11 +29,25 @@ export default function PaymentsView({ clients, settings }) {
   const [loading, setLoading] = useState(true);
   const [allDebts, setAllDebts] = useState({});
 
-  // --- ESTADOS DEL HISTORIAL ---
+  // --- ESTADOS DEL HISTORIAL INDIVIDUAL ---
   const [historyModalOpen, setHistoryModalOpen] = useState(false);
   const [historyClient, setHistoryClient] = useState(null);
   const [historyData, setHistoryData] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+
+  // --- ESTADOS DEL HISTORIAL GLOBAL (ADMIN) ---
+  const [globalHistoryModalOpen, setGlobalHistoryModalOpen] = useState(false);
+  const [globalHistoryData, setGlobalHistoryData] = useState([]);
+  const [loadingGlobalHistory, setLoadingGlobalHistory] = useState(false);
+
+  // --- FORMATEADOR DE MONEDA ---
+  const formatMoney = (val) => {
+    return new Intl.NumberFormat('es-AR', { 
+      style: 'currency', 
+      currency: 'ARS', 
+      maximumFractionDigits: 0 
+    }).format(val);
+  };
 
   // --- LÓGICA DE CÁLCULO DE CICLOS, DEUDA Y ADELANTOS ---
   const calculateClientDebt = async (client) => {
@@ -46,55 +61,42 @@ export default function PaymentsView({ clients, settings }) {
     const startMonth = parseInt(startParts[1]);
     const startDay = parseInt(startParts[2]);
 
-    // Array para almacenar todos los ciclos que el atleta DEBIÓ pagar hasta hoy
     const cycles = [];
-    
-    // Determinamos cuál es el mes límite a evaluar
     const limitDate = new Date();
+    
     if (today.getDate() < startDay) {
-        // Si hoy es antes de su día de cobro, el ciclo actual facturable es el del mes anterior
         limitDate.setMonth(limitDate.getMonth() - 1);
     }
 
     let tempDate = new Date(startYear, startMonth - 1, 1);
     let todayComparison = new Date(limitDate.getFullYear(), limitDate.getMonth(), 1);
 
-    // Iteramos mes a mes para armar los periodos (Ej: "2026-03", "2026-04")
     while (tempDate <= todayComparison) {
       const yearStr = tempDate.getFullYear();
       const monthStr = String(tempDate.getMonth() + 1).padStart(2, '0');
       cycles.push(`${yearStr}-${monthStr}`);
-      
       tempDate.setMonth(tempDate.getMonth() + 1);
     }
 
-    // Buscamos los pagos ya realizados en Firebase para este cliente
     const paymentsRef = collection(db, 'clients', client.id, 'payments');
     const paymentsSnap = await getDocs(paymentsRef);
     
-    // Filtramos solo los que están marcados como 'paid'
     const paidPeriods = paymentsSnap.docs
       .filter((d) => d.data().status === 'paid')
       .map((d) => d.id);
 
-    // Identificamos periodos pendientes (los que están en 'cycles' pero no en 'paidPeriods')
     const pendingCycles = cycles.filter((c) => !paidPeriods.includes(c));
 
-    // --- ENLACE CON EL COSTO DEL PLAN ---
     let planCost = 0;
     if (settings && settings.plans) {
-      // Busca el plan exacto por nombre
       const assignedPlan = settings.plans.find((p) => p.name === client.plan);
       if (assignedPlan) {
         planCost = parseFloat(assignedPlan.price);
       }
     }
 
-    // --- CÁLCULO DEL PRÓXIMO MES ADELANTADO ---
-    // Si no debe nada, calculamos cuál es el próximo ciclo futuro disponible para pagar
-    // 'tempDate' quedó posicionado un mes en el futuro después del while loop anterior.
+    // Cálculo del próximo mes adelantado
     while (paidPeriods.includes(`${tempDate.getFullYear()}-${String(tempDate.getMonth() + 1).padStart(2, '0')}`)) {
-      // Si por alguna razón ya había pagado adelantado, seguimos buscando el siguiente mes libre
       tempDate.setMonth(tempDate.getMonth() + 1);
     }
     const advanceCycleId = `${tempDate.getFullYear()}-${String(tempDate.getMonth() + 1).padStart(2, '0')}`;
@@ -137,7 +139,7 @@ export default function PaymentsView({ clients, settings }) {
     }
   }, [clients, settings]);
 
-  // --- FORMATEADOR DE PERIODOS (Ej: "2026-04" -> "Abril 2026") ---
+  // --- FORMATEADOR DE PERIODOS ---
   const formatPeriodName = (periodId) => {
     if (!periodId) return '';
     const [year, month] = periodId.split('-');
@@ -145,7 +147,7 @@ export default function PaymentsView({ clients, settings }) {
     return date.toLocaleString('es-ES', { month: 'long', year: 'numeric' });
   };
 
-  // --- FUNCIÓN PARA MARCAR UN MES COMO PAGADO ---
+  // --- MARCAR UN MES COMO PAGADO ---
   const handleMarkAsPaid = async (client, periodId, isAdvance = false) => {
     const debtInfo = allDebts[client.id];
     
@@ -166,17 +168,15 @@ export default function PaymentsView({ clients, settings }) {
         amount: debtInfo.planCost,
         planName: client.plan || 'Sin Plan',
         paidAt: new Date(),
-        clientName: client.name // Para listarlo fácilmente en el panel de ingresos
+        clientName: client.name 
       });
       
-      // Actualizar estado local
       setAllDebts((prev) => {
         const currentClientInfo = prev[client.id];
         
         if (isAdvance) {
-          // Si pagó adelantado, recalculamos el próximo mes adelantado disponible sumando 1 mes
           const [year, month] = periodId.split('-');
-          const nextAdvanceDate = new Date(parseInt(year), parseInt(month), 1); // Mes siguiente
+          const nextAdvanceDate = new Date(parseInt(year), parseInt(month), 1); 
           const nextAdvanceId = `${nextAdvanceDate.getFullYear()}-${String(nextAdvanceDate.getMonth() + 1).padStart(2, '0')}`;
           
           return {
@@ -187,7 +187,6 @@ export default function PaymentsView({ clients, settings }) {
             }
           };
         } else {
-          // Si pagó deuda, lo quitamos de la lista de pendientes
           const newPending = currentClientInfo.pendingCycles.filter((c) => c !== periodId);
           return {
             ...prev,
@@ -205,7 +204,7 @@ export default function PaymentsView({ clients, settings }) {
     }
   };
 
-  // --- FUNCIÓN PARA ABRIR HISTORIAL ---
+  // --- ABRIR HISTORIAL INDIVIDUAL ---
   const handleOpenHistory = async (client) => {
     setHistoryClient(client);
     setHistoryModalOpen(true);
@@ -214,20 +213,64 @@ export default function PaymentsView({ clients, settings }) {
     try {
       const snap = await getDocs(collection(db, 'clients', client.id, 'payments'));
       const docs = snap.docs.map((d) => {
-        return { 
-          id: d.id, 
-          ...d.data() 
-        };
+        return { id: d.id, ...d.data() };
       });
       
-      // Ordenar por ID del periodo (que es YYYY-MM) de forma descendente
       docs.sort((a, b) => b.id.localeCompare(a.id));
-      
       setHistoryData(docs);
     } catch (error) { 
       console.error("Error cargando historial:", error); 
     } finally {
       setLoadingHistory(false);
+    }
+  };
+
+  // --- ABRIR HISTORIAL GLOBAL DE INGRESOS (ADMINISTRADOR) ---
+  const handleOpenGlobalHistory = async () => {
+    setGlobalHistoryModalOpen(true);
+    setLoadingGlobalHistory(true);
+    
+    try {
+      const historyMap = {};
+      
+      // Escaneamos a todos los clientes (activos o no, ya que es historial contable)
+      for (const client of clients) {
+        const snap = await getDocs(collection(db, 'clients', client.id, 'payments'));
+        
+        snap.forEach((docSnap) => {
+          const data = docSnap.data();
+          
+          // Solo contamos lo efectivamente pagado
+          if (data.status === 'paid' && data.paidAt) {
+            const d = data.paidAt.toDate ? data.paidAt.toDate() : new Date(data.paidAt);
+            // Agrupamos por Año-Mes (El mes en que ENTRÓ la plata, no el ciclo)
+            const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+            const amount = parseFloat(data.amount || 0);
+            
+            historyMap[key] = (historyMap[key] || 0) + amount;
+          }
+        });
+      }
+      
+      // Transformamos el objeto a un array para renderizar
+      const formattedHistory = Object.keys(historyMap).map(key => {
+        const [year, month] = key.split('-');
+        const dateObj = new Date(year, parseInt(month) - 1);
+        return {
+          id: key,
+          label: dateObj.toLocaleString('es-ES', { month: 'long', year: 'numeric' }),
+          amount: historyMap[key]
+        };
+      });
+
+      // Ordenar del más reciente al más antiguo
+      formattedHistory.sort((a, b) => b.id.localeCompare(a.id));
+      setGlobalHistoryData(formattedHistory);
+      
+    } catch (error) {
+      console.error("Error generando balance global:", error);
+    } finally {
+      setLoadingGlobalHistory(false);
     }
   };
 
@@ -256,15 +299,25 @@ export default function PaymentsView({ clients, settings }) {
            </p>
         </div>
         
-        <div className="relative w-full md:w-80">
-          <Search className="absolute left-4 top-3.5 text-zinc-500" size={18}/>
-          <input 
-            type="text" 
-            placeholder="Buscar atleta..." 
-            className="w-full bg-zinc-900 border border-zinc-800 rounded-xl pl-12 pr-4 py-3 text-white outline-none focus:border-yellow-400 text-sm font-bold transition-colors" 
-            value={searchTerm} 
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
+        <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto">
+          {/* BOTÓN DE HISTORIAL GLOBAL */}
+          <button 
+            onClick={handleOpenGlobalHistory} 
+            className="bg-zinc-900 border border-zinc-800 text-yellow-400 hover:bg-yellow-400/10 hover:border-yellow-400/30 px-4 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 shadow-lg"
+          >
+            <BarChart3 size={18}/> Balance Global
+          </button>
+          
+          <div className="relative w-full md:w-64">
+            <Search className="absolute left-4 top-3.5 text-zinc-500" size={18}/>
+            <input 
+              type="text" 
+              placeholder="Buscar atleta..." 
+              className="w-full bg-zinc-900 border border-zinc-800 rounded-xl pl-12 pr-4 py-3 text-white outline-none focus:border-yellow-400 text-sm font-bold transition-colors" 
+              value={searchTerm} 
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
         </div>
       </div>
 
@@ -279,7 +332,7 @@ export default function PaymentsView({ clients, settings }) {
             const info = allDebts[client.id];
             
             if (!info) {
-              return null; // Si no tiene info, es porque no tiene startDate configurado
+              return null; 
             }
 
             return (
@@ -370,13 +423,13 @@ export default function PaymentsView({ clients, settings }) {
                    )}
                 </div>
 
-                {/* Botón de Historial */}
+                {/* Botón de Historial Individual */}
                 <div className="flex gap-2 shrink-0">
                   <button 
                     onClick={() => handleOpenHistory(client)} 
                     className="flex-1 py-3 bg-zinc-800 text-zinc-400 hover:text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-colors flex items-center justify-center gap-2"
                   >
-                    <History size={14}/> Historial General
+                    <History size={14}/> Detalle Alumno
                   </button>
                 </div>
 
@@ -395,7 +448,79 @@ export default function PaymentsView({ clients, settings }) {
         </div>
       )}
 
-      {/* --- MODAL DE HISTORIAL DE PAGOS --- */}
+      {/* --- MODAL DE HISTORIAL GLOBAL (NUEVO) --- */}
+      {globalHistoryModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 animate-in fade-in">
+          <div className="bg-zinc-950 w-full max-w-md rounded-[2.5rem] border border-zinc-800 shadow-2xl flex flex-col max-h-[85vh] relative overflow-hidden">
+            
+            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-yellow-400 to-amber-600"></div>
+
+            <div className="p-6 border-b border-zinc-800 bg-zinc-900/50 flex justify-between items-start shrink-0">
+              <div>
+                <h2 className="text-xl font-black text-white uppercase italic tracking-tighter flex items-center gap-2">
+                  <BarChart3 className="text-yellow-400" size={20}/> Balance Global
+                </h2>
+                <p className="text-zinc-500 text-[10px] font-black uppercase tracking-widest mt-1">
+                  Ingresos totales por mes calendario
+                </p>
+              </div>
+              <button 
+                onClick={() => setGlobalHistoryModalOpen(false)} 
+                className="text-zinc-500 hover:text-white p-2 bg-zinc-800 rounded-full transition-colors"
+              >
+                <X size={20}/>
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto custom-scrollbar flex-1 space-y-3">
+              {loadingGlobalHistory ? (
+                <div className="flex justify-center py-10">
+                  <RefreshCcw className="animate-spin text-yellow-400" size={32}/>
+                </div>
+              ) : globalHistoryData.length > 0 ? (
+                globalHistoryData.map((record) => (
+                  <div 
+                    key={record.id} 
+                    className="p-4 rounded-2xl border bg-black/40 border-zinc-800 flex justify-between items-center hover:border-zinc-700 transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-yellow-400/10 text-yellow-400 rounded-xl">
+                        <CalendarIcon size={18}/>
+                      </div>
+                      <div>
+                        <p className="text-white font-black text-sm uppercase capitalize-first">
+                          {record.label}
+                        </p>
+                      </div>
+                    </div>
+                    <span className="text-green-400 font-black text-lg">
+                      {formatMoney(record.amount)}
+                    </span>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-12 border border-dashed border-zinc-800 rounded-2xl bg-black/30">
+                  <BarChart3 size={32} className="mx-auto text-zinc-700 mb-3"/>
+                  <p className="text-zinc-500 text-xs font-black uppercase tracking-widest">
+                    Sin registros financieros
+                  </p>
+                </div>
+              )}
+            </div>
+            
+            <div className="p-6 border-t border-zinc-800 bg-zinc-950 shrink-0">
+               <button 
+                  onClick={() => setGlobalHistoryModalOpen(false)} 
+                  className="w-full py-4 text-black font-black uppercase tracking-widest text-xs bg-yellow-400 hover:bg-yellow-300 rounded-xl transition-colors shadow-lg shadow-yellow-400/20"
+                >
+                  Cerrar Reporte
+                </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- MODAL DE HISTORIAL INDIVIDUAL --- */}
       {historyModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 animate-in fade-in">
           <div className="bg-zinc-950 w-full max-w-md rounded-[2.5rem] border border-zinc-800 shadow-2xl flex flex-col max-h-[80vh]">
