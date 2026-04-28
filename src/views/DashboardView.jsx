@@ -9,7 +9,8 @@ import {
   X, 
   CheckCircle, 
   Clock, 
-  Calendar as CalendarIcon
+  Calendar as CalendarIcon,
+  Bell
 } from 'lucide-react';
 import { 
   collection, 
@@ -28,6 +29,7 @@ export default function DashboardView({ clients, settings, navigateTo }) {
   const activeClientsCount = clients.filter((c) => c.active !== false).length;
 
   // --- EFECTO PARA TRAER INGRESOS REALES DEL MES ACTUAL ---
+  // (Esta función se reinicia a $0 automáticamente el día 1 de cada mes)
   useEffect(() => {
     const fetchRealIncome = async () => {
       setLoadingIncome(true);
@@ -39,7 +41,6 @@ export default function DashboardView({ clients, settings, navigateTo }) {
       const currentYear = now.getFullYear();
 
       try {
-        // En lugar de collectionGroup, iteramos por cada cliente (Es 100% seguro y no requiere índices)
         for (const client of clients) {
           
           const paymentsRef = collection(db, 'clients', client.id, 'payments');
@@ -48,30 +49,27 @@ export default function DashboardView({ clients, settings, navigateTo }) {
           snap.forEach((docSnap) => {
             const data = docSnap.data();
             
-            // Si el estado es pagado y tiene fecha de pago
             if (data.status === 'paid' && data.paidAt) {
               
-              // Convertimos la fecha de Firebase a una fecha de JavaScript manejable
               const paidDate = data.paidAt.toDate ? data.paidAt.toDate() : new Date(data.paidAt);
               
-              // Si el mes y el año del pago coinciden con el mes y año actual
+              // Filtro exacto: Solo suma los pagos hechos en el mes actual
               if (paidDate.getMonth() === currentMonth && paidDate.getFullYear() === currentYear) {
                 const amount = parseFloat(data.amount || 0);
                 total += amount;
                 
                 details.push({
                   id: docSnap.id,
-                  period: docSnap.id, // El ID del documento es el periodo YYYY-MM
+                  period: docSnap.id,
                   amount: amount,
                   paidAt: paidDate,
-                  clientName: data.clientName || client.name // Trae el nombre guardado o el actual
+                  clientName: data.clientName || client.name 
                 });
               }
             }
           });
         }
 
-        // Ordenar del pago más reciente al más antiguo
         details.sort((a, b) => b.paidAt - a.paidAt);
 
         setMonthlyIncome(total);
@@ -101,14 +99,25 @@ export default function DashboardView({ clients, settings, navigateTo }) {
   return (
     <div className="max-w-6xl mx-auto animate-in fade-in pb-12">
       
-      {/* HEADER PRINCIPAL */}
-      <div className="mb-10">
-        <h2 className="text-4xl font-black text-white uppercase italic tracking-tighter flex items-center gap-3">
-          <TrendingUp className="text-yellow-400" size={32}/> Panel Principal
-        </h2>
-        <p className="text-zinc-500 text-sm font-bold mt-1">
-          Control total de tu centro de entrenamiento.
-        </p>
+      {/* HEADER PRINCIPAL CON CAMPANITA RESTAURADA */}
+      <div className="flex justify-between items-start mb-10">
+        <div>
+          <h2 className="text-4xl font-black text-white uppercase italic tracking-tighter flex items-center gap-3">
+            <TrendingUp className="text-yellow-400" size={32}/> Panel Principal
+          </h2>
+          <p className="text-zinc-500 text-sm font-bold mt-1">
+            Control total de tu centro de entrenamiento.
+          </p>
+        </div>
+        
+        {/* BOTÓN DE NOTIFICACIONES */}
+        <button 
+          onClick={() => navigateTo('notifications')} 
+          className="relative p-4 bg-zinc-900 border border-zinc-800 rounded-2xl text-zinc-400 hover:text-yellow-400 hover:border-yellow-400/50 transition-all shadow-xl group"
+          title="Ver Notificaciones"
+        >
+          <Bell size={24} className="group-hover:animate-pulse"/>
+        </button>
       </div>
 
       {/* GRID DE MÉTRICAS */}
@@ -248,7 +257,6 @@ export default function DashboardView({ clients, settings, navigateTo }) {
               {paidClientsDetail.length > 0 ? (
                 paidClientsDetail.map((pay, i) => {
                   
-                  // Formateador robusto para la vista de detalle
                   const dateString = pay.paidAt.toLocaleDateString('es-ES', { 
                     day: '2-digit', 
                     month: 'short' 
