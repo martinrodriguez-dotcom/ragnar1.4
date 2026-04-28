@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Users, CreditCard, Layout, TrendingUp, 
-  ChevronRight, DollarSign, X, CheckCircle, Clock, Plus
+  ChevronRight, DollarSign, X, CheckCircle, Clock, Plus, Calendar as CalendarIcon
 } from 'lucide-react';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase';
